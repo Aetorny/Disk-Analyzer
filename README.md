@@ -11,8 +11,8 @@
 1. Клонируйте репозиторий или скачайте архив и перейдите в папку проекта:
 
 ```powershell
-git clone https://github.com/Aetorny/Disk Analyzer
-cd ".\Disk Analyzer"
+git clone https://github.com/Aetorny/Disk-Analyzer
+cd ".\Disk-Analyzer\"
 ```
 
 2. (Рекомендуется) создайте виртуальное окружение и активируйте его (PowerShell):
@@ -25,7 +25,7 @@ python -m venv .venv
 3. Установите зависимости:
 
 ```powershell
-pip install -r requirements.txt
+pip install -r .\requirements.txt
 ```
 
 4. Запустите анализ и генерацию визуализаций:
