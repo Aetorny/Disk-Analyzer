@@ -9,7 +9,7 @@ from folder_info import FolderInfo
 from info import DATA_DIR
 
 
-MIN_SIZE_PERCENT = 0.05  # Минимальный размер папки в процентах от общего размера диска для отображения
+MIN_SIZE_PERCENT = 0.075  # Минимальный размер папки в процентах от общего размера диска для отображения
 
 COLORS_PALETTE = [
     '#2E91E5', '#E15F99', '#1CA71C', '#FB0D0D', '#DA16FF', "#467979", '#B68100',

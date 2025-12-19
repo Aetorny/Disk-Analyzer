@@ -71,3 +71,7 @@ class SizeFinder:
                 f"disk_usage_{start.replace(':', '').replace('/', '_').replace('\\', '_').rstrip('_')}.json"),
                 "w") as f:
                 json.dump(self.folders, f, indent=4)
+
+if __name__ == "__main__":
+    size_finder = SizeFinder()
+    size_finder.run()
