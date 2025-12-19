@@ -6,12 +6,10 @@ import glob
 import hashlib
 
 from folder_info import FolderInfo
-from info import DATA_DIR, PLATFORM
+from info import DATA_DIR
 
 
 MIN_SIZE_PERCENT = 0.075  # Минимальный размер папки в процентах от общего размера диска для отображения
-
-IGNORE_PATHS = ["/proc", "/sys", "/dev", "/run", "/tmp"]
 
 COLORS_PALETTE = [
     '#2E91E5', '#E15F99', '#1CA71C', '#FB0D0D', '#DA16FF', "#467979", '#B68100',
@@ -79,8 +77,6 @@ def process_data_for_treemap(data: dict[str, FolderInfo]) -> \
     # Карта: Путь -> Родитель
     path_to_parent: dict[str, str] = {}
     for p, info in data.items():
-        if PLATFORM != "Windows" and p in IGNORE_PATHS:
-            continue
         for sub in info.get('subfolders', []):
             if sub in data:
                 path_to_parent[sub] = p

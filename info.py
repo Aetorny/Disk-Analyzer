@@ -7,3 +7,4 @@ DATA_DIR = os.path.join(CURRENT_DIR, "data")
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 PLATFORM = platform.system()
+IGNORE_PATHS = ["/proc", "/sys", "/dev", "/run", "/tmp"] if PLATFORM != "Windows" else []

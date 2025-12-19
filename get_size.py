@@ -5,7 +5,7 @@ import os
 import json
 from typing import Optional, Any
 
-from info import CURRENT_DIR, DATA_DIR
+from info import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
 from disk_info import get_start_directories, get_used_disk_size
 from folder import Folder
 from folder_info import FolderInfo
@@ -23,6 +23,10 @@ class SizeFinder:
                 for entry in it:
                     try:
                         if entry.is_dir(follow_symlinks=False):
+                            if entry.path.rstrip('/\\') in IGNORE_PATHS:
+                                if pbar:
+                                    pbar.write(f"Skipping ignored path: {entry.path}")
+                                continue
                             subfolder = self.get_size_of_directory(entry.path, folder=folder, pbar=pbar)
                             folder.subfolders_size[entry.path] = subfolder.used_size
                             folder.used_size += subfolder.used_size
