@@ -22,7 +22,7 @@ class SizeFinder:
             with os.scandir(path) as it:
                 for entry in it:
                     try:
-                        if os.path.islink(entry.path):
+                        if os.path.islink(entry.path) or os.path.ismount(entry.path):
                             continue
                         if entry.is_dir(follow_symlinks=False):
                             if entry.path.rstrip('/\\') in IGNORE_PATHS:
