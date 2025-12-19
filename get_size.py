@@ -2,41 +2,41 @@ from __future__ import annotations
 from tqdm import tqdm
 
 import os
+import gc
 import json
 from typing import Optional, Any
 
 from info import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
 from disk_info import get_start_directories, get_used_disk_size
-from folder import Folder
 from folder_info import FolderInfo
 
 
 class SizeFinder:
     def get_size_of_directory(
             self, path: str,
-            folder: Optional[Folder] = None,
             pbar: Optional[tqdm[Any]] = None
-        ) -> Folder:
-        folder = Folder(path, parent=folder)
+        ) -> int:
+        total_folder_size = 0
+        subfolders: list[str] = []
+        current_folder_files_size = 0
         try:
             with os.scandir(path) as it:
                 for entry in it:
                     try:
-                        if os.path.islink(entry.path) or os.path.ismount(entry.path):
-                            continue
                         if entry.is_dir(follow_symlinks=False):
+                            if entry.is_symlink() or os.path.ismount(entry.path):
+                                continue
                             if entry.path.rstrip('/\\') in IGNORE_PATHS:
                                 if pbar:
                                     pbar.write(f"Skipping ignored path: {entry.path}")
                                 continue
-                            subfolder = self.get_size_of_directory(entry.path, folder=folder, pbar=pbar)
-                            folder.subfolders_size[entry.path] = subfolder.used_size
-                            folder.used_size += subfolder.used_size
+                            subfolders.append(entry.path)
+                            folder_size = self.get_size_of_directory(entry.path, pbar=pbar)
+                            total_folder_size += folder_size
                         elif entry.is_file(follow_symlinks=False):
                             file_size = entry.stat(follow_symlinks=False).st_size
-                            folder.used_size += file_size
-                            if pbar:
-                                pbar.update(file_size)
+                            total_folder_size += file_size
+                            current_folder_files_size += file_size
                     except Exception as e:
                         if pbar:
                             pbar.write(f"Error processing entry {entry.path}: {e}")
@@ -48,14 +48,17 @@ class SizeFinder:
                 pbar.write(f"Error accessing directory {path}: {e}")
             else:
                 print(f"Error accessing directory {path}: {e}")
-            return folder
+            return total_folder_size
+
+        if pbar and current_folder_files_size > 0:
+            pbar.update(current_folder_files_size)
 
         self.folders[path] = {
-            "used_size": folder.used_size,
-            "subfolders": list(folder.subfolders_size.keys())
+            "used_size": total_folder_size,
+            "subfolders": subfolders
         }
 
-        return folder
+        return total_folder_size
 
     def __init__(self, paths: Optional[list[str]] = None) -> None:
         self.starting_points = get_start_directories() if paths is None else paths
@@ -70,8 +73,10 @@ class SizeFinder:
                 print(f"Could not access {start}: {e}")
             
             self.folders: dict[str, FolderInfo] = {}
+            gc.disable()
             with tqdm(total=used_size, unit='B', unit_scale=True, unit_divisor=1024, desc="Scanning") as pbar:
                 self.get_size_of_directory(start, pbar=pbar)
+            gc.enable()
 
             with open(os.path.join(CURRENT_DIR, DATA_DIR,
                 f"disk_usage_{start.replace(':', '').replace('/', '_').replace('\\', '_').rstrip('_')}.json"),
