@@ -65,7 +65,7 @@ def process_data_for_treemap(data: dict[str, FolderInfo]) -> \
         if path not in all_subfolders:
             root_path = path
             break
-            
+
     if not root_path and data:
         raise ValueError("Не удалось определить корневой путь в данных.")
 
