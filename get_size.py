@@ -151,10 +151,10 @@ class SizeFinder:
             # Получаем общий размер диска для прогресс-бара (для красоты)
             try:
                 disk_usage_total = get_used_disk_size(start)
-                print(f"Scanning: {start} (Approx. {disk_usage_total / (1024 ** 3):.2f} GB used)")
+                print(f"Сканирование: {start} (~ {disk_usage_total / (1024 ** 3):.2f} GB использовано)")
             except:
                 disk_usage_total = 0
-                print(f"Scanning: {start}")
+                print(f"Сканирование: {start}")
 
             self.folders = {}
             self.queue = Queue()
@@ -164,7 +164,7 @@ class SizeFinder:
 
             gc.disable() # Отключаем GC для скорости при создании миллионов объектов
 
-            with tqdm(total=disk_usage_total, unit='B', unit_scale=True, unit_divisor=1024, desc="Indexing") as pbar:
+            with tqdm(total=disk_usage_total, unit='B', unit_scale=True, unit_divisor=1024, desc="Сканирование") as pbar:
                 threads: list[threading.Thread] = []
                 # Запуск потоков
                 for _ in range(self.num_threads):
@@ -194,7 +194,7 @@ class SizeFinder:
             # Создаем папку data, если её нет
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            print(f"Saving report to {output_path}...")
+            print(f"Сохранение {output_path}...")
             with open(output_path, "w", encoding='utf-8') as f:
                 json.dump(self.folders, f, indent=4, ensure_ascii=False)
 
