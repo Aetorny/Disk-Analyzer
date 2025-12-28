@@ -314,7 +314,7 @@ def create_treemap(json_filepath: str) -> None:
             plotElement.on('plotly_unhover', function(data){
                 // Не сбрасываем сразу, чтобы успеть нажать ПКМ, 
                 // но можно и сбрасывать, если нужно строгое поведение.
-                // currentHoveredPath = null; 
+                currentHoveredPath = null; 
             });
 
             // 2. Ловим Правый Клик на графике
