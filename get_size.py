@@ -77,15 +77,15 @@ class SizeFinder:
                         continue # Пропускаем файлы/папки без прав доступа
                     except Exception as e:
                         with self.pbar_lock:
-                            if pbar: pbar.write(f"Error on entry {entry.path}: {e}")
+                            if pbar: pbar.write(f"Ошибка при сканировании {entry.path}: {e}")
                         continue
 
         except PermissionError:
             with self.pbar_lock:
-                if pbar: pbar.write(f"Access denied: {path}")
+                if pbar: pbar.write(f"Недостаточно прав доступа: {path}")
         except Exception as e:
             with self.pbar_lock:
-                if pbar: pbar.write(f"Error accessing dir {path}: {e}")
+                if pbar: pbar.write(f"Ошибка при сканировании {path}: {e}")
 
         # Обновляем прогресс-бар
         if pbar and current_folder_files_size > 0:
