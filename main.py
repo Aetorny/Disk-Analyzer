@@ -2,15 +2,18 @@ from glob import glob
 import os
 
 from get_size import SizeFinder
-import visualizer
 from info import DATA_DIR
+from disk_info import get_start_directories
+import visualizer
 
 
 def main() -> None:
-    size_finder = SizeFinder()
-    size_finder.run()
+    disks = get_start_directories()
+    for disk in disks:
+        size_finder = SizeFinder([disk])
+        size_finder.run()
 
-    visualizer.main()
+        visualizer.main(disk.replace('\\', '').replace('/', '').replace(':', ''))
 
     print('Визуализация завершена.')
     files = glob('*.html', root_dir=DATA_DIR)

@@ -370,11 +370,14 @@ def create_treemap(json_filepath: str) -> None:
     print(f"Готово -> {output_file}")
 
 
-def main() -> None:
+def main(filename: str | None = None) -> None:
     json_files = glob.glob("*.json", root_dir=DATA_DIR)
     if not json_files:
         print("JSON файлы не найдены.")
         return
+
+    if filename:
+        json_files = [f for f in json_files if filename in f]
 
     for f in json_files:
         try:
