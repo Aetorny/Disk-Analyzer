@@ -1,5 +1,6 @@
 from glob import glob
 import os
+import webbrowser
 
 from get_size import SizeFinder
 from info import DATA_DIR
@@ -30,7 +31,7 @@ def main() -> None:
     input('Нажмите Enter для открытия сгенерированных файлов...')
 
     for file in files:
-        os.startfile(os.path.join(DATA_DIR, file))
+        webbrowser.open(os.path.join(DATA_DIR, file))
 
 
 if __name__ == '__main__':
