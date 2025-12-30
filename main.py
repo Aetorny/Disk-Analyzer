@@ -4,11 +4,17 @@ import os
 from get_size import SizeFinder
 from info import DATA_DIR
 from disk_info import get_start_directories
+from choose_disk_ui import choose_disk
 import visualizer
 
 
 def main() -> None:
     disks = get_start_directories()
+    if len(disks) > 1:
+        disks = choose_disk(disks)
+    if len(disks) == 0:
+        return print('Вы не выбрали никакого диска.')
+
     for disk in disks:
         size_finder = SizeFinder([disk])
         size_finder.run()
