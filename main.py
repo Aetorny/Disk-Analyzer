@@ -25,8 +25,11 @@ def main() -> None:
     print('Визуализация завершена.')
     files = glob('*.html', root_dir=DATA_DIR)
     print('Сгенерированные файлы:')
-    for idx, file in enumerate(files):
-        print(f'\t{idx+1}: {os.path.join(DATA_DIR, file)}')
+    idx = 1
+    for file in files:
+        if file.endswith('.html'):
+            print(f'\t{idx}: {os.path.join(DATA_DIR, file)}')
+            idx += 1
     
     input('Нажмите Enter для открытия сгенерированных файлов...')
 
