@@ -293,23 +293,24 @@ class DiskTreemapApp(ctk.CTk):
                 disp_name = name if len(name) <= max_chars else name[:max_chars] + "..."
                 texts.append((x+4, y+3, disp_name, text_color, None))
 
+            pad = 2
+            norm_w, norm_h = dx - 2*pad, dy - header_h - 2*pad
+            if norm_w < 4 or norm_h < 4:
+                continue
+
             layout_items = self.raw_data[path]['childrens']
             total_size = sum([x['size'] for x in layout_items])
             if level > 0:
                 layout_items = [x for x in layout_items if not x['is_file']]
 
             sizes = [x['size'] for x in layout_items]
-            pad = 2
-            norm_w, norm_h = dx - 2*pad, dy - header_h - 2*pad
-            if norm_w < 4 or norm_h < 4:
-                continue
 
             norm = squarify_local.normalize_sizes(sizes, norm_w, norm_h, total_size) # pyright: ignore[reportUnknownMemberType]
             while 0.0 in norm:
                 norm.remove(0.0)
             rects_sq: list[dict[str, Any]] = squarify_local.squarify(norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
 
-            for rect, item in zip(rects_sq, layout_items): # pyright: ignore[reportUnknownArgumentType]
+            for rect, item in zip(rects_sq, layout_items):
                 rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
                 
                 if item.get('is_file', False):
