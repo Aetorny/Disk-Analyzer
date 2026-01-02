@@ -8,7 +8,7 @@ def choose_disk(disks: list[str]) -> list[str]:
         n_str = input('Выберите какой диск хотите отключить/включить (номер) или нажмите enter для начала сканирования: ')
         if n_str.isnumeric():
             n = int(n_str)
-            if n >= 1 or n <= len(disks):
+            if n >= 1 and n <= len(disks):
                 disk = disks[n - 1]
                 if disk in excluded_disks:
                     excluded_disks.remove(disk)
