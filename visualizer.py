@@ -83,11 +83,13 @@ class DiskTreemapApp(ctk.CTk):
         self.search_entry = None
         self.search_var = ctk.StringVar(value="")
         self.search_var.trace_add("write", self.on_search)
+        self.search_button = ctk.CTkButton(self.top_frame, text="🔍", font=("Arial", 16), width=30, command=self.toggle_search_bar)
+        self.search_button.pack(side="right", padx=5) # pyright: ignore[reportUnknownMemberType]
         self.bind("<Control-f>", self.toggle_search_bar)
         self.bind("<Control-F>", self.toggle_search_bar)
         self.bind("<Escape>", self.hide_search_bar)
 
-        self.status_bar = ctk.CTkLabel(self, text="Ready", anchor="w", height=25, font=("Arial", 11))
+        self.status_bar = ctk.CTkLabel(self, text="Ready", anchor="w", height=25, font=("Arial", 14))
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=5) # pyright: ignore[reportUnknownMemberType]
 
         self.context_menu = Menu(self, tearoff=0)
@@ -101,7 +103,7 @@ class DiskTreemapApp(ctk.CTk):
         self.refresh_file_list()
         self.after(1000, self.trigger_render)
 
-    def toggle_search_bar(self, _: Any) -> None:
+    def toggle_search_bar(self, *_: Any) -> None:
         self.is_search_bar_active = not self.is_search_bar_active
         if self.is_search_bar_active:
             self.search_entry = ctk.CTkEntry(
