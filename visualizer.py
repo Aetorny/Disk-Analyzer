@@ -169,6 +169,10 @@ class DiskTreemapApp(ctk.CTk):
             while data_files[0] not in self.data_files:
                 time.sleep(0.1)
             self.change_data(data_files[0])
+        else:
+            self.restart_app_label = ctk.CTkLabel(self.canvas_frame, text=f"Данные в папке {DATA_DIR}\nне обнаружены\nДобавьте файлы и запустите программу заново", font=("Arial", 20))
+            self.restart_app_label.place(relx=0.5, rely=0.5, anchor="center") # pyright: ignore[reportUnknownMemberType]
+
 
     def change_data(self, filename: str) -> None:
         self.raw_data = self.data_files[filename]
