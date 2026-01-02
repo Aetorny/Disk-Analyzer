@@ -31,7 +31,7 @@ class DiskTreemapApp(ctk.CTk):
     def __init__(self):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
-        self.title("Numpy Accelerated Treemap")
+        self.title("Disk Visualizer")
         self.geometry("1200x900")
 
         self.raw_data: dict[str, dict[str, Any]] = {}
