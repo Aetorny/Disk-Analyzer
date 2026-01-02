@@ -3,12 +3,13 @@ from tqdm import tqdm
 
 import os
 import gc
-import json
+import pickle
 import threading
+import compression.zstd
 from queue import Queue
 from typing import Optional, Any
 
-from info import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
+from config import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
 from disk_info import get_start_directories, get_used_disk_size
 
 
@@ -27,6 +28,7 @@ class SizeFinder:
 
         # Основное хранилище данных
         self.folders: dict[str, dict[str, Any]] = {}
+        self.to_change: dict[str, str] = {}
         
         # Настройки многопоточности
         self.queue: Queue[str | None] = Queue()
@@ -44,6 +46,7 @@ class SizeFinder:
         Сканирует одну директорию, считает файлы и собирает пути к подпапкам.
         """
         subfolders: list[str] = []
+        files: dict[str, int] = {}
         current_folder_files_size = 0
         
         # Нормализуем текущий путь, чтобы он совпадал с ключом в self.folders
@@ -72,6 +75,7 @@ class SizeFinder:
                             # st_size дает реальный размер в байтах
                             file_size = entry.stat(follow_symlinks=False).st_size
                             current_folder_files_size += file_size
+                            files[entry.name] = file_size
                     
                     except PermissionError:
                         continue # Пропускаем файлы/папки без прав доступа
@@ -94,11 +98,13 @@ class SizeFinder:
 
         # Записываем результаты в общий словарь под блокировкой
         with self.data_lock:
+            if len(files) == 0 and len(subfolders) == 1:
+                self.to_change[normalized_current_path] = subfolders[0]
             self.folders[normalized_current_path] = {
-                # Сохраняем "чистый" размер файлов отдельно для этапа агрегации
                 "__files_size__": current_folder_files_size,
                 "used_size": current_folder_files_size,
-                "subfolders": subfolders
+                "subfolders": subfolders,
+                "files": files
             }
 
     def _worker(self, pbar: Optional[tqdm[Any]]) -> None:
@@ -146,6 +152,64 @@ class SizeFinder:
             # Удаляем временное поле, чтобы не засорять JSON
             del folder_data["__files_size__"]
 
+    def _collapse_folders(self) -> None:
+        to_change = set(sorted(self.to_change))
+        to_remove: set[str] = set()
+        for path in self.folders:
+            if self.folders[path]["used_size"] == 0:
+                to_remove.add(path)
+            i = 0
+            while i < len(self.folders[path]["subfolders"]):
+                subfolder = self.folders[path]["subfolders"][i]
+                if subfolder in to_change:
+                    self.folders[path]["subfolders"].remove(subfolder)
+                    self.folders[path]["subfolders"].append(self.to_change[subfolder])
+                else:
+                    i += 1
+        for path in to_change | to_remove:
+            if path in self.folders:
+                del self.folders[path]
+        for path in self.folders:
+            i = 0
+            while i < len(self.folders[path]["subfolders"]):
+                subfolder = self.folders[path]["subfolders"][i]
+                if subfolder in to_remove:
+                    self.folders[path]["subfolders"].remove(subfolder)
+                else:
+                    i += 1
+
+    def _form_final_data(self):
+        data: dict[str, dict[str, Any]] = {}
+        subfolders: set[str] = set()
+        for path in self.folders:
+            data[path] = {
+                'childrens': [],
+                'used_size': self.folders[path]['used_size'],
+            }
+            for subfolder in self.folders[path]['subfolders']:
+                subfolders.add(subfolder)
+                data[path]['childrens'].append({
+                    'path': subfolder,
+                    'size': self.folders[subfolder]['used_size'],
+                    'is_file': False,
+                    'name': subfolder[len(path):].lstrip(os.sep) if subfolder.startswith(path) else os.path.basename(subfolder),
+                })
+            for filename, size in self.folders[path]['files'].items():
+                data[path]['childrens'].append({
+                    'path': os.path.join(path, filename),
+                    'size': size,
+                    'is_file': True,
+                    'name': filename,
+                })
+            data[path]['childrens'].sort(key=lambda x: x['size'], reverse=True) # type: ignore
+        root = ''
+        for path in self.folders:
+            if path not in subfolders:
+                root = path
+                break
+        data['__root__'] = {'path': root}
+        return data
+
     def run(self) -> None:
         for start in self.starting_points:
             # Получаем общий размер диска для прогресс-бара (для красоты)
@@ -183,20 +247,25 @@ class SizeFinder:
 
             # Этап суммирования размеров
             self._aggregate_sizes()
+
+            self._collapse_folders()
+
+            data = self._form_final_data()
             
             gc.enable()
 
             # Формирование имени файла и сохранение
             safe_name = start.replace(':', '').replace('/', '_').replace('\\', '_').strip('_')
-            filename = f"disk_usage_{safe_name}.json"
+            filename = f"disk_{safe_name}_usage.data"
             output_path = os.path.join(CURRENT_DIR, DATA_DIR, filename)
-            
+
             # Создаем папку data, если её нет
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
             print(f"Сохранение {output_path}...")
-            with open(output_path, "w", encoding='utf-8') as f:
-                json.dump(self.folders, f, indent=4, ensure_ascii=False)
+            compr = compression.zstd.compress(pickle.dumps(data), level=3)
+            with open(output_path, 'wb') as f:
+                f.write(compr)
 
 
 if __name__ == "__main__":
