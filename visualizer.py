@@ -35,10 +35,12 @@ class DiskTreemapApp(ctk.CTk):
         self.geometry("1200x900")
 
         self.raw_data: dict[str, dict[str, Any]] = {}
+        self.search_data: set[str] = set()
         self.data_files: dict[str, dict[str, dict[str, Any]]] = {}
         self.current_root: str = ""
         self.scan_root_path: str = ""
         self.global_max_log = 1.0
+        self.is_search_bar_active = False
 
         self.hit_map = []
         self.current_tk_image = None
@@ -46,6 +48,8 @@ class DiskTreemapApp(ctk.CTk):
         
         self._resize_job = None
         self._render_lock = threading.Lock()
+        self._search_lock = threading.Lock()
+        self._search_workers = 0
         
         # GUI
         self.grid_columnconfigure(0, weight=1)
@@ -76,6 +80,13 @@ class DiskTreemapApp(ctk.CTk):
         self.canvas.bind("<Button-1>", self.on_left_click)
         self.canvas.bind("<Button-3>", self.on_right_click)
 
+        self.search_entry = None
+        self.search_var = ctk.StringVar(value="")
+        self.search_var.trace_add("write", self.on_search)
+        self.bind("<Control-f>", self.toggle_search_bar)
+        self.bind("<Control-F>", self.toggle_search_bar)
+        self.bind("<Escape>", self.hide_search_bar)
+
         self.status_bar = ctk.CTkLabel(self, text="Ready", anchor="w", height=25, font=("Arial", 11))
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=5) # pyright: ignore[reportUnknownMemberType]
 
@@ -89,6 +100,61 @@ class DiskTreemapApp(ctk.CTk):
 
         self.refresh_file_list()
         self.after(1000, self.trigger_render)
+
+    def toggle_search_bar(self, _: Any) -> None:
+        self.is_search_bar_active = not self.is_search_bar_active
+        if self.is_search_bar_active:
+            self.search_entry = ctk.CTkEntry(
+                self.top_frame,
+                textvariable=self.search_var,
+                placeholder_text="Поиск",
+                width=250
+            )
+            self.search_entry.pack() # pyright: ignore[reportUnknownMemberType]
+            self.search_entry.focus()
+        else:
+            self.hide_search_bar(None)
+
+    def hide_search_bar(self, _: Any) -> None:
+        if self.search_entry:
+            self.search_entry.destroy()
+            self.is_search_bar_active = False
+            self.search_var = ctk.StringVar(value="")
+            self.search_var.trace_add("write", self.on_search)
+        self.search_data = set()
+        self.after(100, self.trigger_render)
+
+    def _on_search_thread(self) -> None:
+        if self._search_lock.locked():
+            time.sleep(0.1)
+        if not self._search_lock.acquire(blocking=False):
+            return
+        try:
+            search_str = self.search_var.get().strip().lower()
+            self.search_data = set()
+            for path in self.raw_data:
+                if path == '__root__': continue
+                for child in self.raw_data[path]['childrens']:
+                    if self._search_workers > 1: return
+                    if search_str in child['name'].lower():
+                        current = child['path']
+                        while current != self.scan_root_path:
+                            self.search_data.add(current)
+                            current = os.path.dirname(current)
+            self.search_data.add(self.scan_root_path)
+        finally:
+            self._search_lock.release()
+            self._search_workers -= 1
+            self.after(0, self.trigger_render)
+
+    def on_search(self, *_: Any) -> None:
+        search_str = self.search_var.get().strip().lower()
+        if search_str == '':
+            self.search_data = set()
+            self.after(100, self.trigger_render)
+            return
+        self._search_workers += 1
+        threading.Thread(target=self._on_search_thread, daemon=True).start()
 
     def refresh_file_list(self):
         '''Обновление списка файлов'''
@@ -124,6 +190,7 @@ class DiskTreemapApp(ctk.CTk):
 
     def change_directory(self, path_str: str):
         self.current_root = path_str
+        self.on_search(None)
         self.update_breadcrumbs(path_str)
         self.check_up_button()
         self.trigger_render()
@@ -299,13 +366,14 @@ class DiskTreemapApp(ctk.CTk):
                 continue
 
             layout_items = self.raw_data[path]['childrens']
-            total_size = sum([x['size'] for x in layout_items])
-            if level > 0:
+            if self.search_data:
+                layout_items = [x for x in layout_items if x['path'] in self.search_data]
+            elif level > 0:
                 layout_items = [x for x in layout_items if not x['is_file']]
 
             sizes = [x['size'] for x in layout_items]
 
-            norm = squarify_local.normalize_sizes(sizes, norm_w, norm_h, total_size) # pyright: ignore[reportUnknownMemberType]
+            norm = squarify_local.normalize_sizes(sizes, norm_w, norm_h, sum([x['size'] for x in layout_items])) # pyright: ignore[reportUnknownMemberType]
             while 0.0 in norm:
                 norm.remove(0.0)
             rects_sq: list[dict[str, Any]] = squarify_local.squarify(norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
