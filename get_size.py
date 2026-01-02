@@ -202,6 +202,8 @@ class SizeFinder:
                     'name': filename,
                 })
             data[path]['childrens'].sort(key=lambda x: x['size'], reverse=True) # type: ignore
+            childrens = compression.zstd.compress(pickle.dumps(data[path]['childrens']))
+            data[path]['childrens'] = childrens
         root = ''
         for path in self.folders:
             if path not in subfolders:

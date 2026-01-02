@@ -134,7 +134,7 @@ class DiskTreemapApp(ctk.CTk):
             self.search_data = set()
             for path in self.raw_data:
                 if path == '__root__': continue
-                for child in self.raw_data[path]['childrens']:
+                for child in pickle.loads(compression.zstd.decompress(self.raw_data[path]['childrens'])):
                     if self._search_workers > 1: return
                     if search_str in child['name'].lower():
                         current = child['path']
@@ -365,7 +365,7 @@ class DiskTreemapApp(ctk.CTk):
             if norm_w < 4 or norm_h < 4:
                 continue
 
-            layout_items = self.raw_data[path]['childrens']
+            layout_items = pickle.loads(compression.zstd.decompress(self.raw_data[path]['childrens']))
             if self.search_data:
                 layout_items = [x for x in layout_items if x['path'] in self.search_data]
             elif level > 0:
