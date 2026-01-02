@@ -1,393 +1,442 @@
-from typing import Any
-from math import log10
-import plotly.graph_objects as go
-import json
+import customtkinter as ctk
+import cairo
+from tkinter import Menu
+from PIL import Image, ImageTk
+
 import os
+import gc
 import glob
+import math
+import threading
+import pickle
+import compression.zstd
+import time
+from typing import Any
 
-from pathlib import Path
-from info import DATA_DIR
-
-
-# Порог группировки:
-# 1) если файл/папка занимает меньше 1% от РОДИТЕЛЯ, он уходит в "Прочее"
-# 2) если он занимает меньше 75 МБ от общего объема диска, он уходит в "Прочее"
-SMALL_FILE_THRESHOLD_RATIO = 0.01
-ABSOLUTE_MIN_SIZE = 75 * 1024 * 1024 
-
-# Настройка цветов (Heatmap)
-COLOR_SCALE = 'Turbo'
+import squarify_local
+from config import DATA_DIR
+from color_cache import ColorCache
+from formatting import format_bytes
 
 
-def format_bytes(size: float) -> str:
-    if size == 0: return "0 B"
-    power = 2**10
-    n = 0
-    power_labels = {0 : 'B', 1: 'KB', 2: 'MB', 3: 'GB', 4: 'TB', 5: 'PB'}
-    while size >= power and n < 5:
-        size /= power
-        n += 1
-    return f"{size:.2f} {power_labels[n]}"
+CULLING_SIZE_PX = 2
+COLOR_MAP_NAME = 'turbo'
+COLOR_CACHE = ColorCache(COLOR_MAP_NAME)
+
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
 
 
-def load_json_data(filepath: Path) -> dict[str, Any]:
-    with open(filepath, 'r', encoding='utf-8') as f:
-        return json.load(f)
+class DiskTreemapApp(ctk.CTk):
+    def __init__(self):
+        super().__init__() # pyright: ignore[reportUnknownMemberType]
 
+        self.title("Numpy Accelerated Treemap")
+        self.geometry("1200x900")
 
-def build_hierarchy(data: dict[str, dict[str, Any]]) -> tuple[dict[str, list[tuple[Path, dict[str, Any]]]], Path]:
-    """
-    Преобразует плоский словарь из JSON в структуру:
-    parent_path -> list of items (path, info)
-    """
-    hierarchy: dict[str, list[tuple[Path, dict[str, Any]]]] = {}
+        self.raw_data: dict[str, dict[str, Any]] = {}
+        self.data_files: dict[str, dict[str, dict[str, Any]]] = {}
+        self.current_root: str = ""
+        self.scan_root_path: str = ""
+        self.global_max_log = 1.0
+
+        self.hit_map = []
+        self.current_tk_image = None
+        self.highlight_rect_id = None
+        
+        self._resize_job = None
+        self._render_lock = threading.Lock()
+        
+        # GUI
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # Панель вверху
+        self.top_frame = ctk.CTkFrame(self, height=40)
+        self.top_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5) # pyright: ignore[reportUnknownMemberType]
+        
+        self.btn_up = ctk.CTkButton(self.top_frame, text="⬆ Вверх", width=60, command=self.go_up_level, state="disabled")
+        self.btn_up.pack(side="left", padx=(5, 2)) # pyright: ignore[reportUnknownMemberType]
+
+        self.breadcrumb_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
+        self.breadcrumb_frame.pack(side="left", padx=5, fill="x", expand=True) # pyright: ignore[reportUnknownMemberType]
+
+        self.combo_files = ctk.CTkComboBox(self.top_frame, width=200, command=self.change_data)
+        self.combo_files.pack(side="right", padx=5) # pyright: ignore[reportUnknownMemberType]
+
+        # Canvas
+        self.canvas_frame = ctk.CTkFrame(self)
+        self.canvas_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=0) # pyright: ignore[reportUnknownMemberType]
+        
+        self.canvas = ctk.CTkCanvas(self.canvas_frame, bg="#202020", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+        
+        self.canvas.bind("<Configure>", self.on_resize)
+        self.canvas.bind("<Motion>", self.on_mouse_move)
+        self.canvas.bind("<Button-1>", self.on_left_click)
+        self.canvas.bind("<Button-3>", self.on_right_click)
+
+        self.status_bar = ctk.CTkLabel(self, text="Ready", anchor="w", height=25, font=("Arial", 11))
+        self.status_bar.grid(row=2, column=0, sticky="ew", padx=5) # pyright: ignore[reportUnknownMemberType]
+
+        self.context_menu = Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Копировать путь", command=self.copy_path)
+        self.context_menu.add_command(label="Копировать имя", command=self.copy_name)
+        self.selected_item = None
+
+        self.tooltip_bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="#2b2b2b", outline="#a0a0a0", state="hidden")
+        self.tooltip_text = self.canvas.create_text(0, 0, text="", anchor="nw", fill="white", font=("Arial", 10), state="hidden")
+
+        self.refresh_file_list()
+        self.after(1000, self.trigger_render)
+
+    def refresh_file_list(self):
+        '''Обновление списка файлов'''
+        data_files = glob.glob("*.data", root_dir=DATA_DIR)
+        if data_files:
+            self.combo_files.configure(values=data_files) # pyright: ignore[reportUnknownMemberType]
+            self.combo_files.set(data_files[0])
+            for file in data_files:
+                threading.Thread(target=self.load_selected_data, args=(file,), daemon=True).start()
+            while data_files[0] not in self.data_files:
+                time.sleep(0.1)
+            self.change_data(data_files[0])
+
+    def change_data(self, filename: str) -> None:
+        self.raw_data = self.data_files[filename]
+        self.scan_root_path = self.raw_data['__root__']['path']
+        if self.scan_root_path in self.raw_data:
+            size = self.raw_data[self.scan_root_path]['used_size'] or 1
+            self.global_max_log = math.log10(size)
+        self.change_directory(self.scan_root_path)
+
+    def load_selected_data(self, filename: str):
+        full_path = os.path.join(DATA_DIR, filename)
+        gc.disable()
+        try:
+            with open(full_path, "rb") as f:
+                data = compression.zstd.decompress(f.read())
+            self.data_files[filename] = pickle.loads(data)
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            gc.enable()
+
+    def change_directory(self, path_str: str):
+        self.current_root = path_str
+        self.update_breadcrumbs(path_str)
+        self.check_up_button()
+        self.trigger_render()
     
-    # Сначала найдем корень (путь, которого нет ни у кого в subfolders)
-    all_subfolders: set[str] = set()
-    for info in data.values():
-        for sub in info.get('subfolders', []):
-            all_subfolders.add(str(Path(sub))) # Нормализуем пути через Path
-    
-    root_path = None
-    # Ищем ключ, который не является ничьим subfolder
-    for path_str in data:
-        p_obj = Path(path_str)
-        if str(p_obj) not in all_subfolders:
-            root_path = p_obj
-            break
+    def check_up_button(self):
+        if self.current_root == self.scan_root_path:
+            self.btn_up.configure(state="disabled"); return # pyright: ignore[reportUnknownMemberType]
+        parent = os.path.dirname(self.current_root)
+        
+        while parent and len(parent) >= len(self.scan_root_path):
+            if parent in self.raw_data:
+                self.btn_up.configure(state="normal"); return # pyright: ignore[reportUnknownMemberType]
+            if parent == os.path.dirname(parent): break
+            parent = os.path.dirname(parent)
+        self.btn_up.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
+
+    def go_up_level(self):
+        parent = os.path.dirname(self.current_root)
+        while parent and len(parent) >= len(self.scan_root_path):
+            if parent in self.raw_data:
+                self.change_directory(parent)
+                return
+            if parent == os.path.dirname(parent): break
+            parent = os.path.dirname(parent)
+
+    def update_breadcrumbs(self, path_str: str):
+        for widget in self.breadcrumb_frame.winfo_children(): # type: ignore
+            widget.destroy() # pyright: ignore[reportUnknownMemberType]
+        clean_path = path_str.lstrip('\\')
+        parts = clean_path.split(os.sep)
+        if path_str.startswith('\\\\'): parts[0] = f"\\\\{parts[0]}"
+        accumulated_path = ""
+        for i, part in enumerate(parts):
+            if not part: continue
+            accumulated_path = (part + os.sep if ":" in part else part) if i == 0 else os.path.join(accumulated_path, part)
+            is_valid, is_last = (accumulated_path in self.raw_data), (accumulated_path == self.current_root)
+            btn = ctk.CTkButton(
+                self.breadcrumb_frame, text=part, fg_color="transparent",
+                hover_color="#555555", text_color="#FFFFFF" if is_last else ("#1E90FF" if is_valid else "#777777"),
+                state="normal" if (is_valid and not is_last) else "disabled", height=25, width=20,
+                command=lambda p=accumulated_path: self.change_directory(p)
+            )
+            btn.pack(side="left", padx=0) # pyright: ignore[reportUnknownMemberType]
+            if accumulated_path != self.current_root:
+                ctk.CTkLabel(self.breadcrumb_frame, text="›", width=12, text_color="#777777").pack(side="left") # pyright: ignore[reportUnknownMemberType]
+
+    def on_resize(self, _: Any):
+        if self._resize_job: self.after_cancel(self._resize_job)
+        self._resize_job = self.after(10, self.trigger_render) # Чуть быстрее реакция
+
+    def trigger_render(self):
+        if not self.current_root: return
+        w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
+        
+        cache_key = (self.current_root, w, h)
+        
+        threading.Thread(target=self._render_pipeline, args=(w, h, cache_key), daemon=True).start()
+
+    def _render_pipeline(self, width: int, height: int, cache_key: tuple[str, int, int]):
+        '''
+        Пайплайн отрисовки
+        '''
+        if not self._render_lock.acquire(blocking=False):
+            return
+        try:
+            # Список (y1, y2, x1, x2, r, g, b)
+            rects: list[tuple[float, float, float, float, float, float, float]] = []
+            # Список (x, y, text, font, color, anchor)
+            texts: list[tuple[float, float, str, str, str | None]] = []
+            # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
+            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
+            self._calculate_layout(
+                rects, texts, hit_map,
+                self.current_root,
+                self.raw_data[self.current_root]['used_size'], 0, 0, width, height, 0
+            )
             
-    if not root_path:
-        # Fallback: если корень не найден, берем самый короткий путь
-        root_path = Path(min(data.keys(), key=len))
+            stride = width * 4
+            data = bytearray(stride * height)
+            surface = cairo.ImageSurface.create_for_data(
+                data, 
+                cairo.FORMAT_ARGB32, 
+                width, 
+                height, 
+                stride
+            )
+            ctx = cairo.Context(surface)
 
-    # Строим карту родитель -> дети
-    for path_str, info in data.items():
-        # Приводим все пути к объектам Path для надежности
-        path = Path(path_str)
-        
-        # Для каждого пути найдем его детей в исходных данных
-        subfolders = info.get('subfolders', [])
-        
-        children: list[tuple[Path, dict[str, Any]]] = []
-        for sub_str in subfolders:
-            sub_path = Path(sub_str)
-            if str(sub_str) in data: # Проверяем, есть ли данные по ребенку
-                children.append((sub_path, data[str(sub_str)]))
-            else:
-                # Если данных нет (файл в корне без своей записи), можно добавить фиктивно, 
-                # но обычно сканеры пишут все файлы.
-                pass
-        
-        hierarchy[str(path)] = children
+            bg_val = 32 / 255.0
+            ctx.set_source_rgb(bg_val, bg_val, bg_val)
+            ctx.paint() #
+            for y1, y2, x1, x2, r, g, b in rects:
+                w = x2 - x1
+                h = y2 - y1
+                
+                # --- Черная подложка (Outline) ---
+                ctx.set_source_rgb(0, 0, 0)
+                ctx.rectangle(x1, y1, w, h)
+                ctx.fill()
+                
+                # --- Цветная середина ---
+                if w > 2 and h > 2:
+                    # Cairo принимает цвета 0.0-1.0
+                    # Cairo ARGB пишет в памяти B-G-R-A (на little-endian).
+                    ctx.set_source_rgb(b/255.0, g/255.0, r/255.0)
+                    
+                    # Рисуем внутренний квадрат (+1 пиксель отступа)
+                    ctx.rectangle(x1 + 1, y1 + 1, w - 2, h - 2)
+                    ctx.fill()
+                else:
+                    # Если слишком мелкий, просто красим
+                    ctx.set_source_rgb(b/255.0, g/255.0, r/255.0)
+                    ctx.rectangle(x1, y1, w, h)
+                    ctx.fill()
 
-    return hierarchy, root_path
+            ctx.select_font_face("Arial", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+            ctx.set_font_size(14) 
 
+            for tx, ty, ttext, tcol, _ in texts:
+                if tcol == 'black':
+                    ctx.set_source_rgb(0, 0, 0)
+                else:
+                    ctx.set_source_rgb(1, 1, 1)
+                ctx.move_to(tx, ty + 14)
+                ctx.show_text(ttext)
+            surface.flush()
 
-def process_data_for_treemap(data: dict[str, dict[str, Any]]) -> tuple[
-    list[str], list[str], list[str], list[float], list[str], list[str]
-    ]:
-    hierarchy, root_path = build_hierarchy(data)
-    
-    ids: list[str] = []
-    labels: list[str] = []
-    parents: list[str] = []
-    values: list[float] = []
-    hover_texts: list[str] = []
-    custom_data: list[str] = [] # Для передачи путей в JS
+            image = Image.frombuffer("RGBA", (width, height), data, "raw", "RGBA", 0, 1)
+            self.after(0, lambda: self._update_canvas(image, hit_map))
+        finally:
+            self._render_lock.release()
 
-    # Стек для обхода: (path, parent_id)
-    # Используем str для ID, чтобы Plotly не ругался
-    
-    root_str = str(root_path)
-    root_used = data[root_str]['used_size']
-    
-    ids.append(root_str)
-    labels.append(root_path.name or str(root_path))
-    parents.append("")
-    values.append(root_used)
-    hover_texts.append(f"Root: {format_bytes(root_used)}")
-    custom_data.append(root_str)
+    def _calculate_layout(
+            self,
+            rects: list[tuple[float, float, float, float, float, float, float]],
+            texts: list[tuple[float, float, str, str, str | None]],
+            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
+            path_str: str,
+            size: float, x: float, y: float, dx: float, dy: float,
+            level: int):
+        """
+        Итеративно считает координаты (через стек). Не рисует, а заполняет списки rects и texts.
+        """
+        stack = [(path_str, path_str, size, x, y, dx, dy, level)]
+        while stack:
+            path, name, size, x, y, dx, dy, level = stack.pop()
 
-    # Очередь для обработки: (current_path_obj)
-    queue = [root_path]
-
-    while queue:
-        curr_path = queue.pop(0)
-        curr_str = str(curr_path)
-        
-        # Получаем детей из иерархии
-        children = hierarchy.get(curr_str, [])
-        if not children:
-            continue
-
-        # Получаем размер текущей папки для расчета %
-        parent_size = data[curr_str]['used_size']
-        if parent_size == 0: continue
-
-        others_size = 0
-        others_count = 0
-        
-        # Сортируем детей, чтобы порядок был детерминирован
-        children.sort(key=lambda x: x[1]['used_size'], reverse=True)
-
-        for child_path, child_info in children:
-            child_size = child_info['used_size']
-            child_str = str(child_path)
-
-            if child_size < (parent_size * SMALL_FILE_THRESHOLD_RATIO) or child_size < ABSOLUTE_MIN_SIZE:
-                others_size += child_size
-                others_count += 1
+            if dx < CULLING_SIZE_PX or dy < CULLING_SIZE_PX:
                 continue
 
-            # Добавляем нормальный узел
-            ids.append(child_str)
-            labels.append(child_path.name)
-            parents.append(curr_str)
-            values.append(child_size)
-            custom_data.append(child_str) # Полный путь для копирования
+            rgb_color = COLOR_CACHE.get_color_rgb_and_text(size, self.global_max_log)
+            r, g, b = rgb_color
+            brightness = (r * 299 + g * 587 + b * 114) / 1000
+            text_color = "black" if brightness > 128 else "white"
             
-            # Тултип
-            pct_parent = (child_size / parent_size) * 100
-            pct_disk = (child_size / root_used) * 100
-            disk_info = f"<br>{pct_disk:.2f}% от занятого"
-
-            hover_texts.append(
-                f"<b>{child_path.name}</b><br>"
-                f"{format_bytes(child_size)}<br>"
-                f"{pct_parent:.1f}% от родителя"
-                f"{disk_info}"
-            )
-
-            # Добавляем в очередь для обработки его детей
-            if child_str in hierarchy:
-                queue.append(child_path)
-
-        # Добавляем узел "Прочее", если накопилось
-        if others_size > 0:
-            other_id = f"{curr_str}/__others__"
-            ids.append(other_id)
-            labels.append(f"...небольшие файлы ({others_count})...")
-            parents.append(curr_str)
-            values.append(others_size)
-            custom_data.append(f"Группа мелких файлов в {curr_path.name}")
+            ix, iy, idx, idy = int(x), int(y), int(dx), int(dy)
+            rects.append((iy, iy+idy, ix, ix+idx, r, g, b)) 
             
-            pct_parent = (others_size / parent_size) * 100
-            hover_texts.append(
-                f"Мелкие файлы (<{SMALL_FILE_THRESHOLD_RATIO*100}% от папки)<br>"
-                f"Суммарно: {format_bytes(others_size)}<br>"
-                f"{pct_parent:.1f}% от {curr_path.name}"
-            )
+            hit_map.append((x, y, x+dx, y+dy, path, name, size, False, False))
 
-    return ids, labels, parents, values, hover_texts, custom_data
+            # Текст (Имя сверху)
+            header_h = 0
+            has_header_space = dx > 45 and dy > 40
+            if has_header_space:
+                header_h = 20
+                max_chars = int(dx / 10)
+                disp_name = name if len(name) <= max_chars else name[:max_chars] + "..."
+                texts.append((x+4, y+3, disp_name, text_color, None))
 
+            layout_items = self.raw_data[path]['childrens']
+            total_size = sum([x['size'] for x in layout_items])
+            if level > 0:
+                layout_items = [x for x in layout_items if not x['is_file']]
 
-def create_treemap(json_filepath: str) -> None:
-    path_obj = Path(json_filepath)
-    print(f"Обработка {path_obj.name}...")
-    
-    data = load_json_data(path_obj)
-    if not data: return
+            sizes = [x['size'] for x in layout_items]
+            pad = 2
+            norm_w, norm_h = dx - 2*pad, dy - header_h - 2*pad
+            if norm_w < 4 or norm_h < 4:
+                continue
 
-    ids, labels, parents, values, hover_texts, custom_data = process_data_for_treemap(data)
-    
-    if not ids:
-        print("Нет данных.")
-        return
+            norm = squarify_local.normalize_sizes(sizes, norm_w, norm_h, total_size) # pyright: ignore[reportUnknownMemberType]
+            while 0.0 in norm:
+                norm.remove(0.0)
+            rects_sq: list[dict[str, Any]] = squarify_local.squarify(norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
 
-    min_log = log10(ABSOLUTE_MIN_SIZE) if ABSOLUTE_MIN_SIZE > 0 else 0
-    
-    max_val = max(values) if values else 1
-    max_log = log10(max_val)
-
-    # Название графика
-    title_text = f"Диск: {path_obj.name} | " + \
-        f"Занято: {format_bytes(data[str(min(data.keys(), key=len))]['used_size'])}"
-
-    fig = go.Figure(go.Treemap(
-        ids=ids,
-        labels=labels,
-        parents=parents,
-        values=values,
-        branchvalues="total",
-        textinfo="label+text+percent parent",
-        hoverinfo="text",
-        hovertext=hover_texts,
-        customdata=custom_data, # Данные для JS клика
-        pathbar=dict(visible=True, thickness=25),
-        
-        # HEATMAP: Цвет зависит от Values (размера папок)
-        marker=dict(
-            colors=[log10(v) if v > 0 else 0 for v in values],
-            colorscale=COLOR_SCALE,
-            cmin=min_log,
-            cmax=max_log,
-            showscale=True,
-            colorbar=dict(
-                title="Размер",
-                tickvals=[i for i in range(int(min_log), int(max_log) + 2)],
-                ticktext=[format_bytes(10**i) for i in range(int(min_log), int(max_log) + 2)]
-            ),
-            line=dict(
-                width=1,         # Ширина границы в пикселях (1 или 2 обычно достаточно)
-                color='#FFFFFF'  # Цвет границы (Белый для яркости, или '#333333' для темной темы)
-            ),
-        ),
-        tiling=dict(pad=3),
-    ))
-
-    fig.update_layout( # type: ignore
-        title=title_text,
-        margin=dict(t=50, l=10, r=10, b=10),
-        height=900,
-        font=dict(family="Verdana", size=14),
-        hoverlabel=dict(bgcolor="white", font_size=14)
-    )
-
-    output_file = path_obj.with_suffix('.html')
-    
-    # Генерируем HTML
-    html_content = fig.to_html(include_plotlyjs='cdn', full_html=True) # type: ignore
-    
-    # --- JS INJECTION: Кастомное контекстное меню ---
-    js_script = """
-        <style>
-            /* Стиль контекстного меню */
-            #custom-context-menu {
-                display: none;
-                position: absolute;
-                z-index: 10000;
-                background-color: #ffffff;
-                border: 1px solid #ccc;
-                box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
-                border-radius: 4px;
-                font-family: Verdana, sans-serif;
-                font-size: 14px;
-                padding: 5px 0;
-                min-width: 150px;
-            }
-            
-            .ctx-item {
-                padding: 8px 15px;
-                cursor: pointer;
-                color: #333;
-                transition: background 0.1s;
-            }
-            
-            .ctx-item:hover {
-                background-color: #f0f0f0;
-            }
-            
-            .ctx-separator {
-                border-bottom: 1px solid #eee;
-                margin: 4px 0;
-            }
-        </style>
-
-        <!-- Само меню -->
-        <div id="custom-context-menu">
-            <div class="ctx-item" id="btn-copy-path">📂 Скопировать путь</div>
-            <div class="ctx-item" id="btn-copy-name">📄 Скопировать имя</div>
-            <div class="ctx-separator"></div>
-            <div class="ctx-item" style="color: #888;" id="btn-cancel">Отмена</div>
-        </div>
-
-        <script>
-        document.addEventListener("DOMContentLoaded", function(){
-            var plotElement = document.getElementsByClassName('plotly-graph-div')[0];
-            var menu = document.getElementById('custom-context-menu');
-            var btnCopyPath = document.getElementById('btn-copy-path');
-            var btnCopyName = document.getElementById('btn-copy-name');
-            var btnCancel = document.getElementById('btn-cancel');
-            
-            // Храним данные элемента под курсором
-            var currentHoveredPath = null;
-            var currentHoveredLabel = null;
-
-            // 1. Отслеживаем, на чем сейчас мышь (Plotly Hover)
-            plotElement.on('plotly_hover', function(data){
-                if(data.points.length > 0){
-                    currentHoveredPath = data.points[0].customdata;
-                    currentHoveredLabel = data.points[0].label;
-                }
-            });
-
-            // 2. Ловим Правый Клик на графике
-            plotElement.addEventListener('contextmenu', function(e) {
-                e.preventDefault(); // Блокируем стандартное меню браузера
+            for rect, item in zip(rects_sq, layout_items): # pyright: ignore[reportUnknownArgumentType]
+                rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
                 
-                if (currentHoveredPath) {
-                    // Показываем меню в координатах мыши
-                    menu.style.display = 'block';
-                    menu.style.left = e.pageX + 'px';
-                    menu.style.top = e.pageY + 'px';
-                }
-            });
+                if item.get('is_file', False):
+                    if rdx > CULLING_SIZE_PX and rdy > CULLING_SIZE_PX:
+                        f_rgb = COLOR_CACHE.get_color_rgb_and_text(item['size'], self.global_max_log)
+                        r, g, b = f_rgb
+                        brightness = (r * 299 + g * 587 + b * 114) / 1000
+                        text_color = "black" if brightness > 128 else "white"
+                        rix, riy, ridx, ridy = int(rx), int(ry), int(rdx), int(rdy)
+                        
+                        rects.append((riy, riy+ridy, rix, rix+ridx, r, g, b))
+                        
+                        if rdx > 40 and rdy > 30:
+                            max_chars = int(rdx / 10)
+                            dname = item['name'] if len(item['name']) <= max_chars else item['name'][:max_chars] + "..."
 
-            // 3. Логика кнопок
-            btnCopyPath.onclick = function() {
-                if (currentHoveredPath) {
-                    navigator.clipboard.writeText(currentHoveredPath).then(function() {
-                        console.log('Path copied: ' + currentHoveredPath);
-                        menu.style.display = 'none';
-                    });
-                }
-            };
+                            texts.append((rx+4, ry+3, dname, text_color, None))
+                        
+                        
+                        hit_map.append((rx, ry, rx+rdx, ry+rdy, item['path'], item['name'], item['size'], False, True))
+                else:
+                    stack.append((
+                        item['path'], 
+                        item['name'], 
+                        item['size'], 
+                        rx, ry, rdx, rdy, 
+                        level + 1
+                    ))
+
+    def _update_canvas(self, pil_image: Image.Image, hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]]):
+        self.hit_map = hit_map
+        self.current_tk_image = ImageTk.PhotoImage(pil_image)
+        self.highlight_rect_id = None
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, anchor="nw", image=self.current_tk_image) # pyright: ignore[reportUnknownMemberType]
+
+    def on_mouse_move(self, event: Any):
+        mx = self.canvas.canvasx(event.x) # type: ignore
+        my = self.canvas.canvasy(event.y) # type: ignore
+        
+        found = None
+        for i in range(len(self.hit_map) - 1, -1, -1):
+            item = self.hit_map[i]
+            if item[0] <= mx <= item[2] and item[1] <= my <= item[3]:
+                found = item
+                break
+        
+        if not getattr(self, 'tooltip_text', None) or self.canvas.type(self.tooltip_text) is None:
+            self.tooltip_bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="#2b2b2b", outline="#a0a0a0", state="hidden")
+            self.tooltip_text = self.canvas.create_text(0, 0, text="", anchor="nw", fill="white", font=("Arial", 10), state="hidden")
+
+        if found:
+            name, size_str = found[5], format_bytes(found[6])
+            current_root_size = self.raw_data[self.current_root]['used_size'] or 1
+            pct = (found[6] / current_root_size * 100)
+            is_file = found[8]
+            type_label = "Файл" if is_file else "Папка"
+            if found[7]: type_label = "Группа"
             
-            btnCopyName.onclick = function() {
-                if (currentHoveredLabel) {
-                    navigator.clipboard.writeText(currentHoveredLabel).then(function() {
-                        console.log('Name copied: ' + currentHoveredLabel);
-                        menu.style.display = 'none';
-                    });
-                }
-            };
+            x1, y1, x2, y2 = found[0], found[1], found[2], found[3]
             
-            btnCancel.onclick = function() {
-                menu.style.display = 'none';
-            };
+            # Обводка
+            if self.highlight_rect_id and self.canvas.type(self.highlight_rect_id):
+                self.canvas.coords(self.highlight_rect_id, x1, y1, x2, y2) # pyright: ignore[reportUnknownMemberType]
+            else:
+                self.highlight_rect_id = self.canvas.create_rectangle(x1, y1, x2, y2, outline="white", width=2)
+            self.canvas.tag_raise(self.highlight_rect_id) # Обводка выше карты
 
-            // 4. Скрытие меню при клике в любом другом месте
-            document.addEventListener('click', function(e) {
-                if (e.target.closest('#custom-context-menu') === null) {
-                    menu.style.display = 'none';
-                }
-            });
+            # Тултип
+            tooltip_str = f"[{type_label}] {name}\n{size_str} | {pct:.1f}%"
+            offset_x, offset_y = 15, 15
             
-            // Скрытие при скролле (чтобы меню не уехало)
-            document.addEventListener('scroll', function() {
-                menu.style.display = 'none';
-            });
-        });
-        </script>
-        """
-    
-    # Вставляем скрипт перед закрывающим body
-    html_content = html_content.replace('</body>', f'{js_script}</body>')
+            self.canvas.itemconfigure(self.tooltip_text, text=tooltip_str, state="normal")
+            self.canvas.coords(self.tooltip_text, mx + offset_x, my + offset_y) # type: ignore
+            
+            bbox = self.canvas.bbox(self.tooltip_text)
+            if bbox:
+                pad = 4
+                self.canvas.coords(self.tooltip_bg, bbox[0]-pad, bbox[1]-pad, bbox[2]+pad, bbox[3]+pad) # pyright: ignore[reportUnknownMemberType]
+                self.canvas.itemconfigure(self.tooltip_bg, state="normal")
+            
+            self.canvas.tag_raise(self.tooltip_bg) 
+            self.canvas.tag_raise(self.tooltip_text)
 
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(html_content)
+            # Статус бар снизу
+            self.status_bar.configure(text=f"[{type_label}] {name} | {size_str} | {pct:.1f}%") # pyright: ignore[reportUnknownMemberType]
 
-    print(f"Готово -> {output_file}")
+        else:
+            if self.highlight_rect_id: 
+                self.canvas.delete(self.highlight_rect_id)
+                self.highlight_rect_id = None
+            
+            self.canvas.itemconfigure(self.tooltip_text, state="hidden")
+            self.canvas.itemconfigure(self.tooltip_bg, state="hidden")
+            
+            self.status_bar.configure(text="Ready") # pyright: ignore
 
+    def on_left_click(self, event: Any):
+        mx, my = event.x, event.y
+        for i in range(len(self.hit_map) - 1, -1, -1):
+            item = self.hit_map[i]
+            if item[0] <= mx <= item[2] and item[1] <= my <= item[3]:
+                path, is_dummy, is_file = item[4], item[7], item[8]
+                if path and not is_dummy and not is_file and path in self.raw_data:
+                    self.change_directory(path)
+                return
 
-def main(filename: str | None = None) -> None:
-    json_files = glob.glob("*.json", root_dir=DATA_DIR)
-    if not json_files:
-        print("JSON файлы не найдены.")
-        return
+    def on_right_click(self, event: Any):
+        mx, my = event.x, event.y
+        for i in range(len(self.hit_map) - 1, -1, -1):
+            item = self.hit_map[i]
+            if item[0] <= mx <= item[2] and item[1] <= my <= item[3]:
+                self.selected_item = item
+                try:
+                    self.context_menu.tk_popup(event.x_root, event.y_root)
+                finally:
+                    self.context_menu.grab_release()
+                return
 
-    if filename:
-        json_files = [f for f in json_files if filename in f]
+    def copy_path(self):
+        if self.selected_item and self.selected_item[4]:
+            self.clipboard_clear(); self.clipboard_append(self.selected_item[4])
 
-    for f in json_files:
-        try:
-            full_path = os.path.join(DATA_DIR, f)
-            create_treemap(full_path)
-        except Exception as e:
-            print(f"Ошибка {f}: {e}")
-            import traceback
-            traceback.print_exc()
-
+    def copy_name(self):
+        if self.selected_item:
+            self.clipboard_clear(); self.clipboard_append(self.selected_item[5])
 
 if __name__ == "__main__":
-    main()
+    app = DiskTreemapApp()
+    app.mainloop() # pyright: ignore[reportUnknownMemberType]
