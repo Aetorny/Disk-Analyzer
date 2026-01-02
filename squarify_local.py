@@ -2,7 +2,7 @@ def normalize_sizes(sizes: list[float], dx: float, dy: float, total_size: float)
     """
     Нормализует список числовых значений так, чтобы `sum(sizes) == dx * dy`.
     """
-    total_size = total_size
+    if total_size == 0: return []
     total_area = dx * dy
     return list([size * total_area / total_size for size in sizes])
 
