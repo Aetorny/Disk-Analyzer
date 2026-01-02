@@ -1,5 +1,5 @@
 import shutil
-from info import PLATFORM
+from config import PLATFORM
 
 
 def get_drives_on_windows() -> list[str]:
