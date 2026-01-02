@@ -189,6 +189,12 @@ class DiskTreemapApp(ctk.CTk):
             with open(full_path, "rb") as f:
                 data = compression.zstd.decompress(f.read())
             self.data_files[filename] = pickle.loads(data)
+            if len(self.data_files[filename]) == 1:
+                self.data_files[filename][self.data_files[filename]['__root__']['path']] = {
+                    'path': self.data_files[filename]['__root__'],
+                    'used_size': 0,
+                    'childrens': compression.zstd.compress(pickle.dumps([])),
+                }
         except Exception as e:
             print(f"Error: {e}")
         finally:

@@ -123,7 +123,7 @@ class SizeFinder:
         Считает полные размеры папок снизу вверх.
         """
         print("Aggregating folder sizes...")
-        
+
         # Сортируем пути по длине строки (от длинных к коротким).
         # Самые длинные пути — это самые глубокие папки.
         # Мы гарантированно обработаем детей до их родителей.
@@ -134,6 +134,8 @@ class SizeFinder:
         )
 
         for path in tqdm(sorted_paths, desc="Calculating totals", unit="dir"):
+            if path == '__root__':
+                continue
             folder_data = self.folders[path]
             
             total_size = folder_data["__files_size__"]
@@ -156,6 +158,8 @@ class SizeFinder:
         to_change = set(sorted(self.to_change))
         to_remove: set[str] = set()
         for path in self.folders:
+            if path == '__root__':
+                continue
             if self.folders[path]["used_size"] == 0:
                 to_remove.add(path)
             i = 0
@@ -170,6 +174,8 @@ class SizeFinder:
             if path in self.folders:
                 del self.folders[path]
         for path in self.folders:
+            if path == '__root__':
+                continue
             i = 0
             while i < len(self.folders[path]["subfolders"]):
                 subfolder = self.folders[path]["subfolders"][i]
@@ -182,6 +188,8 @@ class SizeFinder:
         data: dict[str, dict[str, Any]] = {}
         subfolders: set[str] = set()
         for path in self.folders:
+            if path == '__root__':
+                continue
             data[path] = {
                 'childrens': [],
                 'used_size': self.folders[path]['used_size'],
@@ -204,12 +212,7 @@ class SizeFinder:
             data[path]['childrens'].sort(key=lambda x: x['size'], reverse=True) # type: ignore
             childrens = compression.zstd.compress(pickle.dumps(data[path]['childrens']))
             data[path]['childrens'] = childrens
-        root = ''
-        for path in self.folders:
-            if path not in subfolders:
-                root = path
-                break
-        data['__root__'] = {'path': root}
+        data['__root__'] = self.folders['__root__']
         return data
 
     def run(self) -> None:
@@ -222,7 +225,9 @@ class SizeFinder:
                 disk_usage_total = 0
                 print(f"Сканирование: {start}")
 
-            self.folders = {}
+            self.folders = {
+                '__root__': {'path': self._normalize(start)}
+            }
             self.queue = Queue()
             
             # Добавляем начальную точку (нормализованную)
