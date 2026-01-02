@@ -1,2 +1,5 @@
-plotly
 tqdm
+customtkinter
+matplotlib
+pillow
+PyCairo
