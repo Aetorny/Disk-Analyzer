@@ -77,7 +77,7 @@ class DiskIndexingApp(ctk.CTk):
         self.abort_button.grid_remove()
 
         # Кнопка запуска визуализации (показывается только если есть .data файлы)
-        self.visualize_button = ctk.CTkButton(self, text="Запустить визуализацию", command=self.on_close, fg_color="#4caf50")
+        self.visualize_button = ctk.CTkButton(self, text="Запустить визуализацию", command=self.abort_scan, fg_color="#4caf50")
         self.visualize_button.grid(row=6, column=0, padx=20, pady=(0, 20), sticky="ew") # pyright: ignore[reportUnknownMemberType]
         self.refresh_visualize_button()
 
@@ -161,10 +161,7 @@ class DiskIndexingApp(ctk.CTk):
         """Прерывает текущее сканирование, установив флаг is_running в False."""
         # Останавливаем активный SizeFinder
         if self.current_size_finder:
-            try:
-                self.current_size_finder.is_running = False
-            except Exception:
-                pass
+            self.current_size_finder.is_running = False
 
         # Обновляем состояние UI
         self.is_scanning = False
