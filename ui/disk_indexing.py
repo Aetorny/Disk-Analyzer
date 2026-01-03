@@ -6,7 +6,7 @@ import logging
 import glob
 
 
-from config import DATA_DIR
+from config import DATA_DIR, set_should_run_visualizer
 from logic import SizeFinder, get_start_directories
 from ui import format_bytes
 
@@ -72,7 +72,7 @@ class DiskIndexingApp(ctk.CTk):
             self.start_button.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
 
         # Кнопка для досрочного завершения (скрыта по умолчанию)
-        self.abort_button = ctk.CTkButton(self, text="Прервать", command=self.abort_scan, fg_color="#d9534f")
+        self.abort_button = ctk.CTkButton(self, text="Прервать", command=self.abort_scan_and_dont_run_visualizer, fg_color="#d9534f")
         self.abort_button.grid(row=5, column=0, padx=20, pady=(0, 20), sticky="ew") # pyright: ignore[reportUnknownMemberType]
         self.abort_button.grid_remove()
 
@@ -157,6 +157,10 @@ class DiskIndexingApp(ctk.CTk):
             logging.error(f"Ошибка при сканировании: {e}")
             self.after(0, lambda: self.label.configure(text=f"Ошибка", text_color="red")) # pyright: ignore[reportUnknownMemberType]
 
+    def abort_scan_and_dont_run_visualizer(self):
+        set_should_run_visualizer(False)
+        self.abort_scan()
+
     def abort_scan(self):
         """Прерывает текущее сканирование, установив флаг is_running в False."""
         # Останавливаем активный SizeFinder
@@ -195,7 +199,7 @@ class DiskIndexingApp(ctk.CTk):
         self.destroy() 
 
     def on_close(self):
-        # Если идет сканирование — постараемся корректно его прекратить
+        set_should_run_visualizer(False)
         self.is_scanning = False
         if self.current_size_finder:
             self.current_size_finder.is_running = False
