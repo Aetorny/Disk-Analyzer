@@ -4,6 +4,7 @@ from tqdm import tqdm
 import os
 import gc
 import pickle
+import logging
 import threading
 import compression.zstd
 from queue import Queue
@@ -16,6 +17,7 @@ from logic import get_start_directories, get_used_disk_size
 class SizeFinder:
     def __init__(self, paths: Optional[list[str]] = None, num_threads: Optional[int] = None) -> None:
         self.starting_points = get_start_directories() if paths is None else paths
+        logging.info(f'Директории для обхода: {self.starting_points}')
         
         if num_threads:
             self.num_threads = num_threads
@@ -24,7 +26,7 @@ class SizeFinder:
             
             self.num_threads = min(32, cpu_count * 4)
 
-        print(f"Количество используемых потоков: {self.num_threads}")
+        logging.info(f"Количество используемых потоков: {self.num_threads}")
 
         # Основное хранилище данных
         self.folders: dict[str, dict[str, Any]] = {}
@@ -78,16 +80,20 @@ class SizeFinder:
                             files[entry.name] = file_size
                     
                     except PermissionError:
-                        continue # Пропускаем файлы/папки без прав доступа
+                        logging.warning(f"Недостаточно прав доступа: {entry.path}")
+                        continue
                     except Exception as e:
+                        logging.error(f"Ошибка при сканировании {entry.path}: {e}")
                         with self.pbar_lock:
                             if pbar: pbar.write(f"Ошибка при сканировании {entry.path}: {e}")
                         continue
 
         except PermissionError:
+            logging.warning(f"Недостаточно прав доступа: {path}")
             with self.pbar_lock:
                 if pbar: pbar.write(f"Недостаточно прав доступа: {path}")
         except Exception as e:
+            logging.error(f"Ошибка при сканировании {path}: {e}")
             with self.pbar_lock:
                 if pbar: pbar.write(f"Ошибка при сканировании {path}: {e}")
 
@@ -155,6 +161,10 @@ class SizeFinder:
             del folder_data["__files_size__"]
 
     def _collapse_folders(self) -> None:
+        '''
+        Объединяет папки, которые содержат только 1 подпапку
+        И удаляет из данных пустые папки (папки, весящие 0 байт)
+        '''
         to_change = set(sorted(self.to_change))
         to_remove: set[str] = set()
         for path in self.folders:
@@ -184,7 +194,10 @@ class SizeFinder:
                 else:
                     i += 1
 
-    def _form_final_data(self):
+    def _form_final_data(self) -> dict[str, dict[str, Any]]:
+        '''
+        Предобрабатывает данные в формат, который использует визуализатор
+        '''
         data: dict[str, dict[str, Any]] = {}
         subfolders: set[str] = set()
         for path in self.folders:
@@ -217,13 +230,10 @@ class SizeFinder:
 
     def run(self) -> None:
         for start in self.starting_points:
+            logging.info(f'Начало сканирования {start}')
             # Получаем общий размер диска для прогресс-бара (для красоты)
-            try:
-                disk_usage_total = get_used_disk_size(start)
-                print(f"Сканирование: {start} (~ {disk_usage_total / (1024 ** 3):.2f} GB использовано)")
-            except:
-                disk_usage_total = 0
-                print(f"Сканирование: {start}")
+            disk_usage_total = get_used_disk_size(start)
+            print(f"Сканирование: {start} (~ {disk_usage_total / (1024 ** 3):.2f} GB использовано)")
 
             self.folders = {
                 '__root__': {'path': self._normalize(start)}
@@ -252,12 +262,19 @@ class SizeFinder:
                 for t in threads:
                     t.join()
 
-            # Этап суммирования размеров
+            logging.info(f'Сканирование {start} завершено. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
+            
             self._aggregate_sizes()
+
+            logging.info(f'Размеры папок подсчитаны. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
 
             self._collapse_folders()
 
+            logging.info(f'Коллапс папок завершён. Получено {len(self.folders)-1} папок')
+
             data = self._form_final_data()
+
+            logging.info(f'Конечный данные сформированы. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
             
             gc.enable()
 
@@ -269,10 +286,19 @@ class SizeFinder:
             # Создаем папку data, если её нет
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            print(f"Сохранение {output_path}...")
+            logging.info(f"Сжатие данных...")
             compr = compression.zstd.compress(pickle.dumps(data), level=3)
-            with open(output_path, 'wb') as f:
-                f.write(compr)
+            logging.info(f"Сохранение {output_path}...")
+            try:
+                with open(output_path, 'wb') as f:
+                    f.write(compr)
+            except Exception as e:
+                logging.error(f"Не удалось сохранить данные в {output_path}. Ошибка {e}")
+                continue
+
+            logging.info(f'Сканирование {start} завершено. Данные успешно сохранены')
+        
+        logging.info(f'Все сканирования завершены')
 
 
 if __name__ == "__main__":

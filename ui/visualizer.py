@@ -7,6 +7,7 @@ import os
 import gc
 import glob
 import math
+import logging
 import threading
 import pickle
 import compression.zstd
@@ -100,6 +101,8 @@ class DiskTreemapApp(ctk.CTk):
         self.tooltip_bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="#2b2b2b", outline="#a0a0a0", state="hidden")
         self.tooltip_text = self.canvas.create_text(0, 0, text="", anchor="nw", fill="white", font=("Arial", 10), state="hidden")
 
+        logging.info('UI успешно инициализирован')
+
         self.refresh_file_list()
         self.after(1000, self.trigger_render)
 
@@ -162,14 +165,17 @@ class DiskTreemapApp(ctk.CTk):
         '''Обновление списка файлов'''
         data_files = glob.glob("*.data", root_dir=DATA_DIR)
         if data_files:
+            logging.info(f'Обнаружены файлы: {data_files}')
             self.combo_files.configure(values=data_files) # pyright: ignore[reportUnknownMemberType]
             self.combo_files.set(data_files[0])
             for file in data_files:
+                logging.info(f'Запуск загрузки данных из {file}')
                 threading.Thread(target=self.load_selected_data, args=(file,), daemon=True).start()
             while data_files[0] not in self.data_files:
                 time.sleep(0.1)
             self.change_data(data_files[0])
         else:
+            logging.info(f'Данных в папке {DATA_DIR} не обнаружено')
             self.restart_app_label = ctk.CTkLabel(self.canvas_frame, text=f"Данные в папке {DATA_DIR}\nне обнаружены\nДобавьте файлы и запустите программу заново", font=("Arial", 20))
             self.restart_app_label.place(relx=0.5, rely=0.5, anchor="center") # pyright: ignore[reportUnknownMemberType]
 
@@ -186,6 +192,7 @@ class DiskTreemapApp(ctk.CTk):
         full_path = os.path.join(DATA_DIR, filename)
         gc.disable()
         try:
+            logging.info(f'Загрузка данных из файла {full_path}...')
             with open(full_path, "rb") as f:
                 data = compression.zstd.decompress(f.read())
             self.data_files[filename] = pickle.loads(data)
@@ -195,8 +202,9 @@ class DiskTreemapApp(ctk.CTk):
                     'used_size': 0,
                     'childrens': compression.zstd.compress(pickle.dumps([])),
                 }
+            logging.info(f'Данные из файла {full_path} успешно загружены')
         except Exception as e:
-            print(f"Error: {e}")
+            logging.error(f"Ошибка при загрузке данных из {full_path} : {e}")
         finally:
             gc.enable()
 
@@ -259,6 +267,7 @@ class DiskTreemapApp(ctk.CTk):
         
         cache_key = (self.current_root, w, h)
         
+        logging.info('Запуск пайплайна отрисовки')
         threading.Thread(target=self._render_pipeline, args=(w, h, cache_key), daemon=True).start()
 
     def _render_pipeline(self, width: int, height: int, cache_key: tuple[str, int, int]):
@@ -274,11 +283,13 @@ class DiskTreemapApp(ctk.CTk):
             texts: list[tuple[float, float, str, str, str | None]] = []
             # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
             hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
+            logging.info('Начало расчета макета')
             self._calculate_layout(
                 rects, texts, hit_map,
                 self.current_root,
                 self.raw_data[self.current_root]['used_size'], 0, 0, width, height, 0
             )
+            logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
             
             stride = width * 4
             data = bytearray(stride * height)
@@ -334,6 +345,7 @@ class DiskTreemapApp(ctk.CTk):
             self.after(0, lambda: self._update_canvas(image, hit_map))
         finally:
             self._render_lock.release()
+            logging.info('Пайплайн отрисовки завершён')
 
     def _calculate_layout(
             self,

@@ -1,6 +1,7 @@
 import os
 import sys
 import platform
+import logging
 
 
 CURRENT_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
@@ -11,3 +12,6 @@ if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 PLATFORM = platform.system()
 IGNORE_PATHS: set[str] = set(["/proc", "/sys", "/dev", "/run", "/tmp"]) if PLATFORM != "Windows" else set()
+
+logging.basicConfig(level=logging.INFO, filename=os.path.join(CURRENT_DIR, "log.log"), format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
+logging.info(f'Конфигурационный файл успешно запущен. {CURRENT_DIR=}. {DATA_DIR=}. {PLATFORM=}. {IGNORE_PATHS=}')
