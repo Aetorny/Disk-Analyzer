@@ -1,13 +1,10 @@
-from __future__ import annotations
-from tqdm import tqdm
-
 import os
 import gc
 import pickle
 import logging
 import threading
 import compression.zstd
-from queue import Queue
+from queue import Queue, ShutDown
 from typing import Optional, Any
 
 from config import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
@@ -31,19 +28,22 @@ class SizeFinder:
         # Основное хранилище данных
         self.folders: dict[str, dict[str, Any]] = {}
         self.to_change: dict[str, str] = {}
+        self.total = 0
+        self.current = 0
+        self.is_running = False
         
         # Настройки многопоточности
         self.queue: Queue[str | None] = Queue()
         
         # Блокировки
         self.data_lock = threading.Lock()
-        self.pbar_lock = threading.Lock()
+        self.size_calc_lock = threading.Lock()
 
     def _normalize(self, path: str) -> str:
         """Приводит путь к стандартному виду для данной ОС."""
         return os.path.normpath(path)
 
-    def _process_directory(self, path: str, pbar: Optional[tqdm[Any]]) -> None:
+    def _process_directory(self, path: str) -> None:
         """
         Сканирует одну директорию, считает файлы и собирает пути к подпапкам.
         """
@@ -57,6 +57,8 @@ class SizeFinder:
         try:
             with os.scandir(path) as it:
                 for entry in it:
+                    if not self.is_running:
+                        return
                     try:
                         # Обработка директорий
                         if entry.is_dir(follow_symlinks=False):
@@ -84,23 +86,17 @@ class SizeFinder:
                         continue
                     except Exception as e:
                         logging.error(f"Ошибка при сканировании {entry.path}: {e}")
-                        with self.pbar_lock:
-                            if pbar: pbar.write(f"Ошибка при сканировании {entry.path}: {e}")
                         continue
 
         except PermissionError:
             logging.warning(f"Недостаточно прав доступа: {path}")
-            with self.pbar_lock:
-                if pbar: pbar.write(f"Недостаточно прав доступа: {path}")
         except Exception as e:
             logging.error(f"Ошибка при сканировании {path}: {e}")
-            with self.pbar_lock:
-                if pbar: pbar.write(f"Ошибка при сканировании {path}: {e}")
 
         # Обновляем прогресс-бар
-        if pbar and current_folder_files_size > 0:
-            with self.pbar_lock:
-                pbar.update(current_folder_files_size)
+        if current_folder_files_size > 0:
+            with self.size_calc_lock:
+                self.current += current_folder_files_size
 
         # Записываем результаты в общий словарь под блокировкой
         with self.data_lock:
@@ -113,23 +109,27 @@ class SizeFinder:
                 "files": files
             }
 
-    def _worker(self, pbar: Optional[tqdm[Any]]) -> None:
+    def _worker(self) -> None:
         """Поток-обработчик."""
         while True:
-            path = self.queue.get()
+            if not self.is_running:
+                self.queue.shutdown(immediate=True)
+                break
+            try:
+                path = self.queue.get()
+            except ShutDown:
+                break
             if path is None: # Сигнал остановки
                 self.queue.task_done()
                 break
             
-            self._process_directory(path, pbar)
+            self._process_directory(path)
             self.queue.task_done()
 
     def _aggregate_sizes(self) -> None:
         """
         Считает полные размеры папок снизу вверх.
         """
-        print("Aggregating folder sizes...")
-
         # Сортируем пути по длине строки (от длинных к коротким).
         # Самые длинные пути — это самые глубокие папки.
         # Мы гарантированно обработаем детей до их родителей.
@@ -139,7 +139,7 @@ class SizeFinder:
             reverse=True
         )
 
-        for path in tqdm(sorted_paths, desc="Calculating totals", unit="dir"):
+        for path in sorted_paths:
             if path == '__root__':
                 continue
             folder_data = self.folders[path]
@@ -228,12 +228,12 @@ class SizeFinder:
         data['__root__'] = self.folders['__root__']
         return data
 
-    def run(self) -> None:
+    def run(self) -> bool:
+        self.is_running = True
         for start in self.starting_points:
             logging.info(f'Начало сканирования {start}')
-            # Получаем общий размер диска для прогресс-бара (для красоты)
+            # Получаем общий размер диска для прогресс-бара в UI
             disk_usage_total = get_used_disk_size(start)
-            print(f"Сканирование: {start} (~ {disk_usage_total / (1024 ** 3):.2f} GB использовано)")
 
             self.folders = {
                 '__root__': {'path': self._normalize(start)}
@@ -243,24 +243,30 @@ class SizeFinder:
             # Добавляем начальную точку (нормализованную)
             self.queue.put(self._normalize(start))
 
+            self.total = disk_usage_total
+            self.current = 0
+
             gc.disable() # Отключаем GC для скорости при создании миллионов объектов
 
-            with tqdm(total=disk_usage_total, unit='B', unit_scale=True, unit_divisor=1024, desc="Сканирование") as pbar:
-                threads: list[threading.Thread] = []
-                # Запуск потоков
-                for _ in range(self.num_threads):
-                    t = threading.Thread(target=self._worker, args=(pbar,))
-                    t.start()
-                    threads.append(t)
+            threads: list[threading.Thread] = []
+            # Запуск потоков
+            for _ in range(self.num_threads):
+                t = threading.Thread(target=self._worker)
+                t.start()
+                threads.append(t)
 
-                # Блокируем главный поток, пока очередь не опустеет
-                self.queue.join()
+            # Блокируем главный поток, пока очередь не опустеет
+            self.queue.join()
 
-                # Останавливаем потоки
-                for _ in range(self.num_threads):
-                    self.queue.put(None)
-                for t in threads:
-                    t.join()
+            # Останавливаем потоки
+            for _ in range(self.num_threads):
+                self.queue.put(None)
+            for t in threads:
+                t.join()
+
+            if not self.is_running:
+                logging.info('Сканирование прервано')
+                return False
 
             logging.info(f'Сканирование {start} завершено. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
             
@@ -299,8 +305,4 @@ class SizeFinder:
             logging.info(f'Сканирование {start} завершено. Данные успешно сохранены')
         
         logging.info(f'Все сканирования завершены')
-
-
-if __name__ == "__main__":
-    finder = SizeFinder()
-    finder.run()
+        return True

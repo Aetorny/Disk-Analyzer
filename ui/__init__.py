@@ -1,6 +1,6 @@
-from .choose_disk_ui import choose_disk
 from .formatting import format_bytes
-from .visualizer import DiskTreemapApp
+from .disk_indexing import DiskIndexingApp
+from .visualizer import DiskVisualizerApp
 
 
-__all__ = ['choose_disk', 'format_bytes', 'DiskTreemapApp']
+__all__ = ['DiskIndexingApp', 'format_bytes', 'DiskVisualizerApp']
