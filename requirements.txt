@@ -1,4 +1,3 @@
-tqdm
 customtkinter
 matplotlib
 pillow
