@@ -1,7 +1,5 @@
-from get_size import SizeFinder
-from disk_info import get_start_directories
-from choose_disk_ui import choose_disk
-from visualizer import DiskTreemapApp
+from logic import SizeFinder, get_start_directories
+from ui import choose_disk, DiskTreemapApp
 
 
 def main() -> None:

@@ -13,10 +13,10 @@ import compression.zstd
 import time
 from typing import Any
 
-import squarify_local
+import utils.squarify_local as squarify
 from config import DATA_DIR
-from color_cache import ColorCache
-from formatting import format_bytes
+from utils import ColorCache
+from ui import format_bytes
 
 
 CULLING_SIZE_PX = 2
@@ -385,10 +385,10 @@ class DiskTreemapApp(ctk.CTk):
 
             sizes = [x['size'] for x in layout_items]
 
-            norm = squarify_local.normalize_sizes(sizes, norm_w, norm_h, sum([x['size'] for x in layout_items])) # pyright: ignore[reportUnknownMemberType]
+            norm = squarify.normalize_sizes(sizes, norm_w, norm_h, sum([x['size'] for x in layout_items])) # pyright: ignore[reportUnknownMemberType]
             while 0.0 in norm:
                 norm.remove(0.0)
-            rects_sq: list[dict[str, Any]] = squarify_local.squarify(norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
+            rects_sq: list[dict[str, Any]] = squarify.squarify(norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
 
             for rect, item in zip(rects_sq, layout_items):
                 rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']

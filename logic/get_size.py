@@ -10,7 +10,7 @@ from queue import Queue
 from typing import Optional, Any
 
 from config import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
-from disk_info import get_start_directories, get_used_disk_size
+from logic import get_start_directories, get_used_disk_size
 
 
 class SizeFinder:
