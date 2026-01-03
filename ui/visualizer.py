@@ -28,7 +28,7 @@ ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
 
-class DiskTreemapApp(ctk.CTk):
+class DiskVisualizerApp(ctk.CTk):
     def __init__(self):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
@@ -529,7 +529,3 @@ class DiskTreemapApp(ctk.CTk):
     def copy_name(self):
         if self.selected_item:
             self.clipboard_clear(); self.clipboard_append(self.selected_item[5])
-
-if __name__ == "__main__":
-    app = DiskTreemapApp()
-    app.mainloop() # pyright: ignore[reportUnknownMemberType]
