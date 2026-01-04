@@ -1,14 +1,18 @@
 import customtkinter as ctk
 
+import os
 import time
-import threading
-import logging
 import glob
+import pickle
+import logging
+import threading
+import compression.zstd
 
 
 from config import DATA_DIR, set_should_run_visualizer
 from logic import SizeFinder, get_start_directories
 from ui import format_bytes
+from utils import format_disk_name
 
 
 ctk.set_appearance_mode("System")
@@ -51,6 +55,7 @@ class DiskIndexingApp(ctk.CTk):
                 var = ctk.BooleanVar(value=False)
                 self.check_vars[disk] = var
                 chk = ctk.CTkSwitch(self.scrollable_frame, text=disk, variable=var)
+                threading.Thread(target=self.add_date_info, args=(disk, chk), daemon=True).start()
                 chk.grid(row=idx, column=0, padx=10, pady=(0, 10), sticky="w") # pyright: ignore[reportUnknownMemberType]
 
         # Прогресс бар
@@ -86,6 +91,18 @@ class DiskIndexingApp(ctk.CTk):
             self.protocol("WM_DELETE_WINDOW", self.on_close) # pyright: ignore[reportUnknownMemberType]
         except Exception:
             pass
+
+    def add_date_info(self, disk_name: str, chk: ctk.CTkSwitch):
+        name = f'disk_{format_disk_name(disk_name)}_usage.data'
+        if not os.path.exists(os.path.join(DATA_DIR, name)):
+            return
+        with open(os.path.join(DATA_DIR, name), "rb") as f:
+            data = compression.zstd.decompress(f.read())
+            data = pickle.loads(data)
+            date = data.get('__date__', {}).get('date', '')
+            if date:
+                chk.configure(text=f"{disk_name}\tПосл. скан. ({date})") # pyright: ignore[reportUnknownMemberType]
+
 
     def start_scan(self):
         selected_disks = [disk for disk, var in self.check_vars.items() if var.get()]

@@ -4,11 +4,13 @@ import pickle
 import logging
 import threading
 import compression.zstd
+from datetime import datetime
 from queue import Queue, ShutDown
 from typing import Optional, Any
 
 from config import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
 from logic import get_start_directories, get_used_disk_size
+from utils import format_disk_name
 
 
 class SizeFinder:
@@ -226,6 +228,7 @@ class SizeFinder:
             childrens = compression.zstd.compress(pickle.dumps(data[path]['childrens']))
             data[path]['childrens'] = childrens
         data['__root__'] = self.folders['__root__']
+        data['__date__'] = {'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         return data
 
     def run(self) -> bool:
@@ -285,7 +288,7 @@ class SizeFinder:
             gc.enable()
 
             # Формирование имени файла и сохранение
-            safe_name = start.replace(':', '').replace('/', '_').replace('\\', '_').strip('_')
+            safe_name = format_disk_name(start)
             filename = f"disk_{safe_name}_usage.data"
             output_path = os.path.join(CURRENT_DIR, DATA_DIR, filename)
 
