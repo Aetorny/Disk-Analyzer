@@ -7,7 +7,7 @@ import logging
 CURRENT_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
     else os.path.dirname(os.path.abspath(__file__))
 
-DATA_DIR = os.path.join(CURRENT_DIR, "data")
+DATA_DIR = os.path.join(CURRENT_DIR, "DiskAnalyzerData")
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 PLATFORM = platform.system()
