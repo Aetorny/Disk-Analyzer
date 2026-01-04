@@ -23,16 +23,20 @@
 
 ## Установка
 
-Требования:
+<details>
+<summary><strong>Для сборки из исходного кода</strong></summary>
+
+### Требования:
 - **Python 3.14+**
 - `pip` (обычно входит в комплект Python)
 
 Рекомендуется использовать Python 3.14t (версия с отключенным GIL) для наибольшей скорости работы.
+</details>
 
 <details>
 <summary><strong>Windows</strong></summary>
 
-Скачайте последнюю версию из [релизов](https://github.com/Aetorny/Disk-Analyzer/releases)
+<strong>Скачайте последнюю версию из [релизов](https://github.com/Aetorny/Disk-Analyzer/releases)</strong>
 
 Или соберите исходного кода:
 
