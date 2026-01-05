@@ -1,18 +1,12 @@
 import customtkinter as ctk
 
-import os
 import time
-import glob
-import pickle
 import logging
 import threading
-import compression.zstd
 
-
-from config import DATA_DIR, set_should_run_visualizer
-from logic import SizeFinder, get_start_directories
+from config import set_should_run_visualizer
+from logic import SizeFinder, Database
 from ui import format_bytes
-from utils import format_disk_name
 
 
 ctk.set_appearance_mode("System")
@@ -20,7 +14,7 @@ ctk.set_default_color_theme("blue")
 
 
 class DiskIndexingApp(ctk.CTk):
-    def __init__(self):
+    def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
         
         self.title("Выбор дисков для анализа")
@@ -44,7 +38,8 @@ class DiskIndexingApp(ctk.CTk):
         self.scrollable_frame.grid_columnconfigure(0, weight=1)
 
         # Получаем диски и создаем чекбоксы
-        self.disks = get_start_directories()
+        self.disks = sorted(databases.keys())
+        self.databases = databases
         self.check_vars: dict[str, ctk.BooleanVar] = {} 
         
         if not self.disks:
@@ -84,7 +79,6 @@ class DiskIndexingApp(ctk.CTk):
         # Кнопка запуска визуализации (показывается только если есть .data файлы)
         self.visualize_button = ctk.CTkButton(self, text="Запустить визуализацию", command=self.abort_scan, fg_color="#4caf50")
         self.visualize_button.grid(row=6, column=0, padx=20, pady=(0, 20), sticky="ew") # pyright: ignore[reportUnknownMemberType]
-        self.refresh_visualize_button()
 
         # Обработка закрытия окна (останавливает сканирование)
         try:
@@ -93,16 +87,9 @@ class DiskIndexingApp(ctk.CTk):
             pass
 
     def add_date_info(self, disk_name: str, chk: ctk.CTkSwitch):
-        name = f'disk_{format_disk_name(disk_name)}_usage.data'
-        if not os.path.exists(os.path.join(DATA_DIR, name)):
-            return
-        with open(os.path.join(DATA_DIR, name), "rb") as f:
-            data = compression.zstd.decompress(f.read())
-            data = pickle.loads(data)
-            date = data.get('__date__', {}).get('date', '')
-            if date:
-                chk.configure(text=f"{disk_name}\tПосл. скан. ({date})") # pyright: ignore[reportUnknownMemberType]
-
+        date = self.databases[disk_name].get('__date__')
+        if date:
+            chk.configure(text=f"{disk_name}\t(Посл. скан.: {date})") # pyright: ignore[reportUnknownMemberType]
 
     def start_scan(self):
         selected_disks = [disk for disk, var in self.check_vars.items() if var.get()]
@@ -160,7 +147,7 @@ class DiskIndexingApp(ctk.CTk):
         try:
             for disk in disks:
                 # Сохраняем экземпляр в self, чтобы update_progress_loop мог его видеть
-                self.current_size_finder = SizeFinder([disk])
+                self.current_size_finder = SizeFinder(self.databases[disk], disk)
                 
                 # Обновляем текст в главном потоке (опционально)
                 self.label.configure(text=f"Сканирование диска: {disk}") # pyright: ignore[reportUnknownMemberType]
@@ -191,16 +178,6 @@ class DiskIndexingApp(ctk.CTk):
         self.status_label.configure(text="Остановка...") # pyright: ignore[reportUnknownMemberType]
 
         threading.Thread(target=self.wait_for_scan_to_finish, daemon=True).start()
-
-    def refresh_visualize_button(self):
-        """Показывает кнопку визуализации только если в DATA_DIR есть .data файлы"""
-        data_files = glob.glob("*.data", root_dir=DATA_DIR)
-
-        if data_files:
-            self.visualize_button.grid() # pyright: ignore[reportUnknownMemberType]
-            self.visualize_button.configure(state="normal") # pyright: ignore[reportUnknownMemberType]
-        else:
-            self.visualize_button.grid_remove()
 
     def wait_for_scan_to_finish(self):
         '''

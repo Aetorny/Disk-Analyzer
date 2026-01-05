@@ -4,8 +4,6 @@ from tkinter import Menu
 from PIL import Image, ImageTk
 
 import os
-import gc
-import glob
 import math
 import logging
 import threading
@@ -15,6 +13,7 @@ import time
 from typing import Any
 
 import utils.squarify_local as squarify
+from logic import Database
 from config import DATA_DIR
 from utils import ColorCache
 from ui import format_bytes
@@ -29,15 +28,16 @@ ctk.set_default_color_theme("blue")
 
 
 class DiskVisualizerApp(ctk.CTk):
-    def __init__(self):
+    def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
         self.title("Disk Visualizer")
         self.geometry("1200x900")
 
-        self.raw_data: dict[str, dict[str, Any]] = {}
+        self.layout_cache: dict[tuple[Any, Any, Any], Any] = {}
+        self.raw_data: Database
+        self.databases = databases
         self.search_data: set[str] = set()
-        self.data_files: dict[str, dict[str, dict[str, Any]]] = {}
         self.current_root: str = ""
         self.scan_root_path: str = ""
         self.global_max_log = 1.0
@@ -138,11 +138,18 @@ class DiskVisualizerApp(ctk.CTk):
             search_str = self.search_var.get().strip().lower()
             self.search_data = set()
             for path in self.raw_data:
-                if path == '__root__': continue
-                for child in pickle.loads(compression.zstd.decompress(self.raw_data[path]['childrens'])):
+                if path.startswith('__'): continue
+                for folder in pickle.loads(compression.zstd.decompress(self.raw_data[path]['subfolders'])):
                     if self._search_workers > 1: return
-                    if search_str in child['name'].lower():
-                        current = child['path']
+                    if search_str in folder['n'].lower():
+                        current = folder['p']
+                        while current != self.scan_root_path:
+                            self.search_data.add(current)
+                            current = os.path.dirname(current)
+                for file in pickle.loads(compression.zstd.decompress(self.raw_data[path]['files'])):
+                    if self._search_workers > 1: return
+                    if search_str in file['n'].lower():
+                        current = file['p']
                         while current != self.scan_root_path:
                             self.search_data.add(current)
                             current = os.path.dirname(current)
@@ -163,57 +170,34 @@ class DiskVisualizerApp(ctk.CTk):
 
     def refresh_file_list(self):
         '''Обновление списка файлов'''
-        data_files = glob.glob("*.data", root_dir=DATA_DIR)
-        if data_files:
-            logging.info(f'Обнаружены файлы: {data_files}')
-            self.combo_files.configure(values=data_files) # pyright: ignore[reportUnknownMemberType]
-            self.combo_files.set(data_files[0])
-            for file in data_files:
+        disks = sorted(self.databases.keys())
+        if disks:
+            logging.info(f'Обнаружены файлы дисков: {disks}')
+            self.combo_files.configure(values=disks) # pyright: ignore[reportUnknownMemberType]
+            self.combo_files.set(disks[0])
+            for file in disks:
                 logging.info(f'Запуск загрузки данных из {file}')
-                threading.Thread(target=self.load_selected_data, args=(file,), daemon=True).start()
-            while data_files[0] not in self.data_files:
-                time.sleep(0.1)
-            self.change_data(data_files[0])
+            self.change_data(disks[0])
         else:
             logging.info(f'Данных в папке {DATA_DIR} не обнаружено')
             self.restart_app_label = ctk.CTkLabel(self.canvas_frame, text=f"Данные в папке {DATA_DIR}\nне обнаружены\nДобавьте файлы и запустите программу заново", font=("Arial", 20))
             self.restart_app_label.place(relx=0.5, rely=0.5, anchor="center") # pyright: ignore[reportUnknownMemberType]
 
-
-    def change_data(self, filename: str) -> None:
-        self.raw_data = self.data_files[filename]
-        self.scan_root_path = self.raw_data['__root__']['path']
+    def change_data(self, disk: str) -> None:
+        self.raw_data = self.databases[disk]
+        self.scan_root_path = self.raw_data['__root__']
         if self.scan_root_path in self.raw_data:
-            size = self.raw_data[self.scan_root_path]['used_size'] or 1
+            size = self.raw_data[self.scan_root_path]['s']
             self.global_max_log = math.log10(size)
         self.change_directory(self.scan_root_path)
 
-    def load_selected_data(self, filename: str):
-        full_path = os.path.join(DATA_DIR, filename)
-        gc.disable()
-        try:
-            logging.info(f'Загрузка данных из файла {full_path}...')
-            with open(full_path, "rb") as f:
-                data = compression.zstd.decompress(f.read())
-            self.data_files[filename] = pickle.loads(data)
-            if len(self.data_files[filename]) == 1:
-                self.data_files[filename][self.data_files[filename]['__root__']['path']] = {
-                    'path': self.data_files[filename]['__root__'],
-                    'used_size': 0,
-                    'childrens': compression.zstd.compress(pickle.dumps([])),
-                }
-            logging.info(f'Данные из файла {full_path} успешно загружены')
-        except Exception as e:
-            logging.error(f"Ошибка при загрузке данных из {full_path} : {e}")
-        finally:
-            gc.enable()
-
     def change_directory(self, path_str: str):
         self.current_root = path_str
+        self.search_data = set()
+        self.trigger_render()
         self.on_search(None)
         self.update_breadcrumbs(path_str)
         self.check_up_button()
-        self.trigger_render()
     
     def check_up_button(self):
         if self.current_root == self.scan_root_path:
@@ -277,19 +261,27 @@ class DiskVisualizerApp(ctk.CTk):
         if not self._render_lock.acquire(blocking=False):
             return
         try:
-            # Список (y1, y2, x1, x2, r, g, b)
-            rects: list[tuple[float, float, float, float, float, float, float]] = []
-            # Список (x, y, text, font, color, anchor)
-            texts: list[tuple[float, float, str, str, str | None]] = []
-            # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
-            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
-            logging.info('Начало расчета макета')
-            self._calculate_layout(
-                rects, texts, hit_map,
-                self.current_root,
-                self.raw_data[self.current_root]['used_size'], 0, 0, width, height, 0
-            )
-            logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
+            if cache_key in self.layout_cache and not self.search_data:
+                logging.info(f'Макет из кэша: {cache_key}')
+                rects, texts, hit_map = self.layout_cache[cache_key]
+            else:
+                # Список (y1, y2, x1, x2, r, g, b)
+                rects: list[tuple[float, float, float, float, float, float, float]] = []
+                # Список (x, y, text, font, color, anchor)
+                texts: list[tuple[float, float, str, str, str | None]] = []
+                # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
+                hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
+                logging.info('Начало расчета макета')
+                execution_time = self._calculate_layout(
+                    rects, texts, hit_map,
+                    self.current_root,
+                    self.raw_data[self.current_root]['s'], 0, 0, width, height, 0
+                )
+                logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
+                logging.info(f'Время расчёта макета: {execution_time} секунд')
+                if execution_time >= 0.1:
+                    logging.info(f'Макет сохранён в кэш: {cache_key}')
+                    self.layout_cache[cache_key] = (rects, texts, hit_map)
             
             stride = width * 4
             data = bytearray(stride * height)
@@ -354,10 +346,11 @@ class DiskVisualizerApp(ctk.CTk):
             hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
             path_str: str,
             size: float, x: float, y: float, dx: float, dy: float,
-            level: int):
+            level: int) -> float:
         """
         Итеративно считает координаты (через стек). Не рисует, а заполняет списки rects и texts.
         """
+        start_time = time.perf_counter()
         stack = [(path_str, path_str, size, x, y, dx, dy, level)]
         while stack:
             path, name, size, x, y, dx, dy, level = stack.pop()
@@ -389,48 +382,66 @@ class DiskVisualizerApp(ctk.CTk):
             if norm_w < 4 or norm_h < 4:
                 continue
 
-            layout_items = pickle.loads(compression.zstd.decompress(self.raw_data[path]['childrens']))
+            subfolders = pickle.loads(compression.zstd.decompress(self.raw_data[path]['subfolders']))
             if self.search_data:
-                layout_items = [x for x in layout_items if x['path'] in self.search_data]
-            elif level > 0:
-                layout_items = [x for x in layout_items if not x['is_file']]
+                subfolders = [x for x in subfolders if x['p'] in self.search_data]
 
-            sizes = [x['size'] for x in layout_items]
+            files = []
+            if level > 0 and not self.search_data:
+                sizes: list[float] = [x['s'] for x in subfolders]
+            else:
+                files = pickle.loads(compression.zstd.decompress(self.raw_data[path]['files']))
+                if self.search_data:
+                    files = [x for x in files if x['p'] in self.search_data]
+                sizes: list[float] = [x['s'] for x in subfolders + files]
+                sizes.sort(reverse=True)
 
-            norm = squarify.normalize_sizes(sizes, norm_w, norm_h, sum([x['size'] for x in layout_items])) # pyright: ignore[reportUnknownMemberType]
-            while 0.0 in norm:
-                norm.remove(0.0)
-            rects_sq: list[dict[str, Any]] = squarify.squarify(norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
+            norm = squarify.normalize_sizes(sizes, norm_w, norm_h, sum(sizes)) # pyright: ignore[reportUnknownMemberType]
+            subfolders_norm, files_norm = norm[:len(subfolders)], norm[len(subfolders):]
+            while 0.0 in subfolders_norm:
+                subfolders_norm.remove(0.0)
+            while 0.0 in files_norm:
+                files_norm.remove(0.0)
+            subfolders_len = len(subfolders_norm)
+            rects_sq: list[dict[str, Any]] = squarify.squarify(subfolders_norm+files_norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
+            subfolders_rects, files_rects = rects_sq[:subfolders_len], rects_sq[subfolders_len:]
 
-            for rect, item in zip(rects_sq, layout_items):
+            for rect, folder in zip(subfolders_rects, subfolders):
+                rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
+
+                stack.append((
+                    folder['p'], 
+                    folder['n'],
+                    folder['s'], 
+                    rx, ry, rdx, rdy, 
+                    level + 1
+                ))
+
+            if level > 0 and not self.search_data:
+                continue
+            
+            for rect, file in zip(files_rects, files):
                 rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
                 
-                if item.get('is_file', False):
-                    if rdx > CULLING_SIZE_PX and rdy > CULLING_SIZE_PX:
-                        f_rgb = COLOR_CACHE.get_color_rgb_and_text(item['size'], self.global_max_log)
-                        r, g, b = f_rgb
-                        brightness = (r * 299 + g * 587 + b * 114) / 1000
-                        text_color = "black" if brightness > 128 else "white"
-                        rix, riy, ridx, ridy = int(rx), int(ry), int(rdx), int(rdy)
-                        
-                        rects.append((riy, riy+ridy, rix, rix+ridx, r, g, b))
-                        
-                        if rdx > 40 and rdy > 30:
-                            max_chars = int(rdx / 10)
-                            dname = item['name'] if len(item['name']) <= max_chars else item['name'][:max_chars] + "..."
+                if rdx > CULLING_SIZE_PX and rdy > CULLING_SIZE_PX:
+                    f_rgb = COLOR_CACHE.get_color_rgb_and_text(file['s'], self.global_max_log)
+                    r, g, b = f_rgb
+                    brightness = (r * 299 + g * 587 + b * 114) / 1000
+                    text_color = "black" if brightness > 128 else "white"
+                    rix, riy, ridx, ridy = int(rx), int(ry), int(rdx), int(rdy)
+                    
+                    rects.append((riy, riy+ridy, rix, rix+ridx, r, g, b))
+                    
+                    if rdx > 40 and rdy > 30:
+                        max_chars = int(rdx / 10)
+                        name = file['n']
+                        dname = name if len(name) <= max_chars else name[:max_chars] + "..."
 
-                            texts.append((rx+4, ry+3, dname, text_color, None))
-                        
-                        
-                        hit_map.append((rx, ry, rx+rdx, ry+rdy, item['path'], item['name'], item['size'], False, True))
-                else:
-                    stack.append((
-                        item['path'], 
-                        item['name'], 
-                        item['size'], 
-                        rx, ry, rdx, rdy, 
-                        level + 1
-                    ))
+                        texts.append((rx+4, ry+3, dname, text_color, None))
+                    
+                    hit_map.append((rx, ry, rx+rdx, ry+rdy, file['p'], name, file['s'], False, True))
+        end_time = time.perf_counter()
+        return end_time - start_time
 
     def _update_canvas(self, pil_image: Image.Image, hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]]):
         self.hit_map = hit_map
@@ -456,7 +467,7 @@ class DiskVisualizerApp(ctk.CTk):
 
         if found:
             name, size_str = found[5], format_bytes(found[6])
-            current_root_size = self.raw_data[self.current_root]['used_size'] or 1
+            current_root_size = self.raw_data[self.current_root]['s'] or 1
             pct = (found[6] / current_root_size * 100)
             is_file = found[8]
             type_label = "Файл" if is_file else "Папка"

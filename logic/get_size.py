@@ -8,15 +8,15 @@ from datetime import datetime
 from queue import Queue, ShutDown
 from typing import Optional, Any
 
-from config import CURRENT_DIR, DATA_DIR, IGNORE_PATHS
-from logic import get_start_directories, get_used_disk_size
-from utils import format_disk_name
+from config import IGNORE_PATHS
+from logic import Database, get_used_disk_size
 
 
 class SizeFinder:
-    def __init__(self, paths: Optional[list[str]] = None, num_threads: Optional[int] = None) -> None:
-        self.starting_points = get_start_directories() if paths is None else paths
-        logging.info(f'Директории для обхода: {self.starting_points}')
+    def __init__(self, database: Database, path: str, num_threads: Optional[int] = None) -> None:
+        self.database = database
+        self.starting_point = path
+        logging.info(f'Директории для обхода: {self.starting_point}')
         
         if num_threads:
             self.num_threads = num_threads
@@ -200,112 +200,95 @@ class SizeFinder:
         '''
         Предобрабатывает данные в формат, который использует визуализатор
         '''
-        data: dict[str, dict[str, Any]] = {}
-        subfolders: set[str] = set()
-        for path in self.folders:
+        data: dict[str, Any] = {}
+        for path in self.folders.keys():
             if path == '__root__':
                 continue
+            path = self._normalize(path)
             data[path] = {
-                'childrens': [],
-                'used_size': self.folders[path]['used_size'],
+                'subfolders': [],
+                'files': [],
+                's': self.folders[path]['used_size']
             }
             for subfolder in self.folders[path]['subfolders']:
-                subfolders.add(subfolder)
-                data[path]['childrens'].append({
-                    'path': subfolder,
-                    'size': self.folders[subfolder]['used_size'],
-                    'is_file': False,
-                    'name': subfolder[len(path):].lstrip(os.sep) if subfolder.startswith(path) else os.path.basename(subfolder),
+                data[path]['subfolders'].append({
+                    'p': subfolder,
+                    'n': subfolder[len(path):].lstrip(os.sep) if subfolder.startswith(path) else os.path.basename(subfolder),
+                    's': self.folders[subfolder]['used_size']
                 })
             for filename, size in self.folders[path]['files'].items():
-                data[path]['childrens'].append({
-                    'path': os.path.join(path, filename),
-                    'size': size,
-                    'is_file': True,
-                    'name': filename,
+                data[path]['files'].append({
+                    'p': os.path.join(path, filename),
+                    'n': filename,
+                    's': size
                 })
-            data[path]['childrens'].sort(key=lambda x: x['size'], reverse=True) # type: ignore
-            childrens = compression.zstd.compress(pickle.dumps(data[path]['childrens']))
-            data[path]['childrens'] = childrens
-        data['__root__'] = self.folders['__root__']
-        data['__date__'] = {'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            data[path]['subfolders'].sort(key=lambda x: x['s'], reverse=True) # type: ignore
+            data[path]['files'].sort(key=lambda x: x['s'], reverse=True) # type: ignore
+
+            data[path]['subfolders'] = compression.zstd.compress(pickle.dumps(data[path]['subfolders']))
+            data[path]['files'] = compression.zstd.compress(pickle.dumps(data[path]['files']))
+
+        data['__root__'] = self.folders['__root__']['path']
+        data['__date__'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         return data
 
     def run(self) -> bool:
         self.is_running = True
-        for start in self.starting_points:
-            logging.info(f'Начало сканирования {start}')
-            # Получаем общий размер диска для прогресс-бара в UI
-            disk_usage_total = get_used_disk_size(start)
+        logging.info(f'Начало сканирования {self.starting_point}')
+        # Получаем общий размер диска для прогресс-бара в UI
+        disk_usage_total = get_used_disk_size(self.starting_point)
 
-            self.folders = {
-                '__root__': {'path': self._normalize(start)}
-            }
-            self.queue = Queue()
-            
-            # Добавляем начальную точку (нормализованную)
-            self.queue.put(self._normalize(start))
-
-            self.total = disk_usage_total
-            self.current = 0
-
-            gc.disable() # Отключаем GC для скорости при создании миллионов объектов
-
-            threads: list[threading.Thread] = []
-            # Запуск потоков
-            for _ in range(self.num_threads):
-                t = threading.Thread(target=self._worker)
-                t.start()
-                threads.append(t)
-
-            # Блокируем главный поток, пока очередь не опустеет
-            self.queue.join()
-
-            # Останавливаем потоки
-            for _ in range(self.num_threads):
-                self.queue.put(None)
-            for t in threads:
-                t.join()
-
-            if not self.is_running:
-                logging.info('Сканирование прервано')
-                return False
-
-            logging.info(f'Сканирование {start} завершено. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
-            
-            self._aggregate_sizes()
-
-            logging.info(f'Размеры папок подсчитаны. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
-
-            self._collapse_folders()
-
-            logging.info(f'Коллапс папок завершён. Получено {len(self.folders)-1} папок')
-
-            data = self._form_final_data()
-
-            logging.info(f'Конечный данные сформированы. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
-            
-            gc.enable()
-
-            # Формирование имени файла и сохранение
-            safe_name = format_disk_name(start)
-            filename = f"disk_{safe_name}_usage.data"
-            output_path = os.path.join(CURRENT_DIR, DATA_DIR, filename)
-
-            # Создаем папку data, если её нет
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
-            logging.info(f"Сжатие данных...")
-            compr = compression.zstd.compress(pickle.dumps(data), level=3)
-            logging.info(f"Сохранение {output_path}...")
-            try:
-                with open(output_path, 'wb') as f:
-                    f.write(compr)
-            except Exception as e:
-                logging.error(f"Не удалось сохранить данные в {output_path}. Ошибка {e}")
-                continue
-
-            logging.info(f'Сканирование {start} завершено. Данные успешно сохранены')
+        self.folders = {
+            '__root__': {'path': self._normalize(self.starting_point)}
+        }
+        self.queue = Queue()
         
-        logging.info(f'Все сканирования завершены')
+        # Добавляем начальную точку (нормализованную)
+        self.queue.put(self._normalize(self.starting_point))
+
+        self.total = disk_usage_total
+        self.current = 0
+
+        gc.disable() # Отключаем GC для скорости при создании миллионов объектов
+
+        threads: list[threading.Thread] = []
+        # Запуск потоков
+        for _ in range(self.num_threads):
+            t = threading.Thread(target=self._worker)
+            t.start()
+            threads.append(t)
+
+        # Блокируем главный поток, пока очередь не опустеет
+        self.queue.join()
+
+        # Останавливаем потоки
+        for _ in range(self.num_threads):
+            self.queue.put(None)
+        for t in threads:
+            t.join()
+
+        if not self.is_running:
+            logging.info('Сканирование прервано')
+            return False
+
+        logging.info(f'Сканирование {self.starting_point} завершено. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
+        
+        self._aggregate_sizes()
+
+        logging.info(f'Размеры папок подсчитаны. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
+
+        self._collapse_folders()
+
+        logging.info(f'Коллапс папок завершён. Получено {len(self.folders)-1} папок')
+
+        data = self._form_final_data()
+
+        logging.info(f'Конечный данные сформированы. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
+        
+        gc.enable()
+
+        self.database.create_db(data)
+
+        logging.info(f'Сканирование {self.starting_point} завершено. Данные успешно сохранены')
+        
         return True
