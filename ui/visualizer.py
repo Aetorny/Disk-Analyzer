@@ -14,7 +14,7 @@ from typing import Any
 
 import utils.squarify_local as squarify
 from logic import Database
-from config import DATA_DIR
+from config import DATA_DIR, set_should_run_analyzer
 from utils import ColorCache
 from ui import format_bytes
 
@@ -60,6 +60,9 @@ class DiskVisualizerApp(ctk.CTk):
         self.top_frame = ctk.CTkFrame(self, height=40)
         self.top_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5) # pyright: ignore[reportUnknownMemberType]
         
+        self.btn_return_to_analyzer = ctk.CTkButton(self.top_frame, text="⬅", width=30, fg_color="red", command=self.return_to_analyzer)
+        self.btn_return_to_analyzer.pack(side="left", padx=(5, 2)) # pyright: ignore[reportUnknownMemberType]
+
         self.btn_up = ctk.CTkButton(self.top_frame, text="⬆ Вверх", width=60, command=self.go_up_level, state="disabled")
         self.btn_up.pack(side="left", padx=(5, 2)) # pyright: ignore[reportUnknownMemberType]
 
@@ -540,3 +543,7 @@ class DiskVisualizerApp(ctk.CTk):
     def copy_name(self):
         if self.selected_item:
             self.clipboard_clear(); self.clipboard_append(self.selected_item[5])
+
+    def return_to_analyzer(self):
+        set_should_run_analyzer(True)
+        self.destroy()

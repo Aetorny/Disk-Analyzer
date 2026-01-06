@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 class DiskIndexingApp(ctk.CTk):
     def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
-        
+
         self.title("Выбор дисков для анализа")
         self.geometry("400x500")
         
@@ -172,10 +172,11 @@ class DiskIndexingApp(ctk.CTk):
             self.current_size_finder.is_running = False
 
         # Обновляем состояние UI
-        self.is_scanning = False
+        if self.is_scanning:
+            self.label.configure(text="Сканирование прервано", text_color="red") # pyright: ignore[reportUnknownMemberType]
+            self.status_label.configure(text="Остановка...") # pyright: ignore[reportUnknownMemberType]
         self.abort_button.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
-        self.label.configure(text="Сканирование прервано", text_color="red") # pyright: ignore[reportUnknownMemberType]
-        self.status_label.configure(text="Остановка...") # pyright: ignore[reportUnknownMemberType]
+        self.is_scanning = False
 
         threading.Thread(target=self.wait_for_scan_to_finish, daemon=True).start()
 

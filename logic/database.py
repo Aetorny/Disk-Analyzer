@@ -26,9 +26,6 @@ class Database:
         return val
 
     def get(self, key: str):
-        """
-        Мгновенное чтение
-        """
         try:
             offset, length = self.index[key]
         except KeyError:
@@ -51,7 +48,7 @@ class Database:
             
             with open(self.path, 'wb') as f:
                 for key, value in source_dict.items():
-                    # 1. Сериализуем данные в бинарный формат (marshal самый быстрый)
+                    # 1. Сериализуем данные в бинарный формат
                     data_bytes = marshal.dumps(value)
                     length = len(data_bytes)
                     

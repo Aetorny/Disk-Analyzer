@@ -14,10 +14,21 @@ PLATFORM = platform.system()
 IGNORE_PATHS: set[str] = set(["/proc", "/sys", "/dev", "/run", "/tmp"]) if PLATFORM != "Windows" else set()
 
 is_should_run_visualizer = True
+is_should_run_analyzer = False
 
 def set_should_run_visualizer(value: bool) -> None:
     global is_should_run_visualizer
     is_should_run_visualizer = value
+
+def set_should_run_analyzer(value: bool) -> None:
+    global is_should_run_analyzer
+    is_should_run_analyzer = value
+
+def set_default_values() -> None:
+    global is_should_run_visualizer
+    global is_should_run_analyzer
+    is_should_run_visualizer = True
+    is_should_run_analyzer = False
 
 logging.basicConfig(level=logging.INFO, filename=os.path.join(DATA_DIR, "log.log"), filemode='w', format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
 logging.info(f'Конфигурационный файл успешно запущен. {CURRENT_DIR=}. {DATA_DIR=}. {PLATFORM=}. {IGNORE_PATHS=}')
