@@ -8,8 +8,8 @@ import threading
 from typing import Optional
 
 from config import set_should_run_visualizer
-from logic import SizeFinder, Database
-from utils import format_bytes, create_database
+from logic import SizeFinder, Database, is_root
+from utils import format_bytes, create_database, delete_database
 
 
 ctk.set_appearance_mode("System")
@@ -45,17 +45,35 @@ class DiskIndexingApp(ctk.CTk):
         self.databases = databases
         self.check_vars: dict[str, ctk.BooleanVar] = {} 
         
+        self.paths_frames: dict[str, tuple[ctk.CTkFrame, ctk.CTkLabel, ctk.CTkButton]] = {}
         if not self.paths:
             error_label = ctk.CTkLabel(self.scrollable_frame, text="Пути не найдены!")
             error_label.grid(row=0, column=0, padx=10, pady=10) # pyright: ignore[reportUnknownMemberType]
             path_row = 1
         else:
+            # Создаем фрейм для пути с переключателем для каждого пути для сканирования и кнопкой удаления
             for idx, path in enumerate(self.paths):
+                path_frame = ctk.CTkFrame(self.scrollable_frame)
+                path_frame.grid(row=idx, column=0, padx=10, pady=(0, 10), sticky="ew") # pyright: ignore[reportUnknownMemberType]
+                path_frame.grid_columnconfigure(0, weight=1)
+
                 var = ctk.BooleanVar(value=False)
                 self.check_vars[path] = var
-                chk = ctk.CTkSwitch(self.scrollable_frame, text=path, variable=var)
-                threading.Thread(target=self.add_date_info, args=(path, chk), daemon=True).start()
-                chk.grid(row=idx, column=0, padx=10, pady=(0, 10), sticky="w") # pyright: ignore[reportUnknownMemberType]
+                chk = ctk.CTkSwitch(path_frame, text=path, variable=var)
+                chk.grid(row=0, column=0, padx=0, pady=0, sticky="w") # pyright: ignore[reportUnknownMemberType]
+                
+                # Кнопка удаления
+                delete_button = ctk.CTkButton(path_frame, text="✕", width=30, fg_color="#d9534f", hover_color="#c9302c", command=lambda p=path: self.remove_scanned_db(p))
+                delete_button.grid(row=0, column=1, padx=(10, 0), pady=0) # pyright: ignore[reportUnknownMemberType]
+                
+                # Лейбл для даты
+                date_label = ctk.CTkLabel(path_frame, text="", text_color="gray")
+                date_label.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="w") # pyright: ignore[reportUnknownMemberType]
+                
+                self.paths_frames[path] = (path_frame, date_label, delete_button)
+                
+                threading.Thread(target=self.check_db_if_already_scanned, args=(path, delete_button, date_label), daemon=True).start()
+
             path_row = len(self.paths)
         
         # Кнопка для сканирования произвольной папки
@@ -95,10 +113,36 @@ class DiskIndexingApp(ctk.CTk):
         except Exception:
             pass
 
-    def add_date_info(self, path_name: str, chk: ctk.CTkSwitch):
+    def check_db_if_already_scanned(self, path_name: str, delete_button: ctk.CTkButton, date_label: ctk.CTkLabel):
+        '''
+        Добавляет дату последнего сканирования
+        Если её нет, то убирает кнопку удаления
+        '''
         date = self.databases[path_name].get('__date__')
         if date:
-            chk.configure(text=f"{path_name}\t(Посл. скан.: {date})") # pyright: ignore[reportUnknownMemberType]
+            date_label.configure(text=f"Посл. скан.: {date}") # pyright: ignore[reportUnknownMemberType]
+        else:
+            date_label.destroy()
+            delete_button.destroy()
+
+    def remove_scanned_db(self, path: str):
+        """
+        Удаляет просканированную базу данных
+        """
+        db = self.databases[path]
+        db_is_open = db.is_open
+        if db_is_open:
+            db.close()
+        delete_database(db.path)
+        if not is_root(path):
+            del self.databases[path]
+            self.paths_frames[path][0].destroy()
+            del self.paths_frames[path]
+            return
+        if db_is_open:
+            db.open()
+        self.paths_frames[path][1].destroy()
+        self.paths_frames[path][2].destroy()
 
     def scan_custom_folder(self):
         """Открывает диалог выбора папки и сканирует её"""
