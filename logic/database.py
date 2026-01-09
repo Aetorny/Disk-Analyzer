@@ -26,6 +26,8 @@ class Database:
         return val
 
     def get(self, key: str):
+        if not self.is_open:
+            return None
         try:
             offset, length = self.index[key]
         except KeyError:
@@ -78,6 +80,7 @@ class Database:
         if self.is_open:
             return
         if not os.path.exists(self.path):
+            self.is_open = False
             return
         self.f = open(self.path, 'rb')
         self.is_open = True
@@ -98,3 +101,6 @@ class Database:
             return
         self.f.close()
         self.is_open = False
+
+    def is_empty(self) -> bool:
+        return not os.path.exists(self.path)
