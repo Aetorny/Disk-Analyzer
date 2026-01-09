@@ -7,3 +7,7 @@ def format_bytes(size: float) -> str:
         size /= power
         n += 1
     return f"{size:.2f} {power_labels[n]}"
+
+
+def format_path(path: str) -> str:
+    return path.replace(':', '').replace('/', '_').replace('\\', '_').strip('_')
