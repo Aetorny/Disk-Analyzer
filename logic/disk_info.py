@@ -1,3 +1,4 @@
+import os
 import shutil
 import logging
 from config import PLATFORM
@@ -27,3 +28,7 @@ def get_used_disk_size(path: str) -> int:
     _, used, _ = shutil.disk_usage(path)
     logging.info(f'Получен объем диска {path}: {used}')
     return used
+
+
+def is_root(path: str) -> bool:
+    return path == os.path.dirname(path)
