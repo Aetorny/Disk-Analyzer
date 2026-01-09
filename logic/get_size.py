@@ -9,7 +9,7 @@ from queue import Queue, ShutDown
 from typing import Optional, Any
 
 from config import IGNORE_PATHS
-from logic import Database, get_used_disk_size
+from logic import Database, get_used_disk_size, is_root
 
 
 class SizeFinder:
@@ -235,7 +235,7 @@ class SizeFinder:
     def run(self) -> bool:
         self.is_running = True
         logging.info(f'Начало сканирования {self.starting_point}')
-        if os.path.dirname(self.starting_point) != self.starting_point:
+        if not is_root(self.starting_point):
             # Если текущая директория не корень системы, то определить заранее размер нельзя
             total_usage = 0
         else:
