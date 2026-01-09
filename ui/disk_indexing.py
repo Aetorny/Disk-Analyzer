@@ -9,7 +9,7 @@ from typing import Optional
 
 from config import set_should_run_visualizer
 from logic import SizeFinder, Database, is_root
-from utils import format_bytes, create_database, delete_database
+from utils import format_bytes, create_database, delete_database, format_date_to_time_ago
 
 
 ctk.set_appearance_mode("System")
@@ -120,7 +120,7 @@ class DiskIndexingApp(ctk.CTk):
         '''
         date = self.databases[path_name].get('__date__')
         if date:
-            date_label.configure(text=f"Посл. скан.: {date}") # pyright: ignore[reportUnknownMemberType]
+            date_label.configure(text=f"Посл. скан.: {format_date_to_time_ago(date)}") # pyright: ignore[reportUnknownMemberType]
         else:
             date_label.destroy()
             delete_button.destroy()
