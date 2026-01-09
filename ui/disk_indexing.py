@@ -1,12 +1,15 @@
 import customtkinter as ctk
+from tkinter import filedialog
 
+import os
 import time
 import logging
 import threading
+from typing import Optional
 
 from config import set_should_run_visualizer
 from logic import SizeFinder, Database
-from ui import format_bytes
+from utils import format_bytes, create_database
 
 
 ctk.set_appearance_mode("System")
@@ -17,9 +20,9 @@ class DiskIndexingApp(ctk.CTk):
     def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
-        self.title("Выбор дисков для анализа")
+        self.title("Выбор путей для анализа")
         self.geometry("400x500")
-        
+
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
@@ -29,29 +32,35 @@ class DiskIndexingApp(ctk.CTk):
         self.run_result = None
 
         # Заголовок
-        self.label = ctk.CTkLabel(self, text="Выберите диски для сканирования:", font=("Arial", 16, "bold"))
+        self.label = ctk.CTkLabel(self, text="Выберите пути для сканирования:", font=("Arial", 16, "bold"))
         self.label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew") # pyright: ignore[reportUnknownMemberType]
 
-        # Контейнер для списка дисков
-        self.scrollable_frame = ctk.CTkScrollableFrame(self, label_text="Доступные диски")
+        # Контейнер для списка пути
+        self.scrollable_frame = ctk.CTkScrollableFrame(self, label_text="Доступные пути")
         self.scrollable_frame.grid(row=1, column=0, padx=20, pady=10, sticky="nsew") # pyright: ignore[reportUnknownMemberType]
         self.scrollable_frame.grid_columnconfigure(0, weight=1)
 
-        # Получаем диски и создаем чекбоксы
-        self.disks = sorted(databases.keys())
+        # Получаем пути и создаем чекбоксы
+        self.paths = sorted(databases.keys())
         self.databases = databases
         self.check_vars: dict[str, ctk.BooleanVar] = {} 
         
-        if not self.disks:
-            error_label = ctk.CTkLabel(self.scrollable_frame, text="Диски не найдены!")
+        if not self.paths:
+            error_label = ctk.CTkLabel(self.scrollable_frame, text="Пути не найдены!")
             error_label.grid(row=0, column=0, padx=10, pady=10) # pyright: ignore[reportUnknownMemberType]
+            path_row = 1
         else:
-            for idx, disk in enumerate(self.disks):
+            for idx, path in enumerate(self.paths):
                 var = ctk.BooleanVar(value=False)
-                self.check_vars[disk] = var
-                chk = ctk.CTkSwitch(self.scrollable_frame, text=disk, variable=var)
-                threading.Thread(target=self.add_date_info, args=(disk, chk), daemon=True).start()
+                self.check_vars[path] = var
+                chk = ctk.CTkSwitch(self.scrollable_frame, text=path, variable=var)
+                threading.Thread(target=self.add_date_info, args=(path, chk), daemon=True).start()
                 chk.grid(row=idx, column=0, padx=10, pady=(0, 10), sticky="w") # pyright: ignore[reportUnknownMemberType]
+            path_row = len(self.paths)
+        
+        # Кнопка для сканирования произвольной папки
+        self.scan_folder_button = ctk.CTkButton(self.scrollable_frame, text="Сканировать конкретную папку...", command=self.scan_custom_folder, fg_color="#3b3b3b")
+        self.scan_folder_button.grid(row=path_row, column=0, padx=10, pady=(10, 10), sticky="ew") # pyright: ignore[reportUnknownMemberType]
 
         # Прогресс бар
         self.progress_bar = ctk.CTkProgressBar(self)
@@ -68,7 +77,7 @@ class DiskIndexingApp(ctk.CTk):
         self.start_button = ctk.CTkButton(self, text="Начать анализ", command=self.start_scan)
         self.start_button.grid(row=4, column=0, padx=20, pady=20, sticky="ew") # pyright: ignore[reportUnknownMemberType]
         
-        if not self.disks:
+        if not self.paths:
             self.start_button.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
 
         # Кнопка для досрочного завершения (скрыта по умолчанию)
@@ -86,16 +95,35 @@ class DiskIndexingApp(ctk.CTk):
         except Exception:
             pass
 
-    def add_date_info(self, disk_name: str, chk: ctk.CTkSwitch):
-        date = self.databases[disk_name].get('__date__')
+    def add_date_info(self, path_name: str, chk: ctk.CTkSwitch):
+        date = self.databases[path_name].get('__date__')
         if date:
-            chk.configure(text=f"{disk_name}\t(Посл. скан.: {date})") # pyright: ignore[reportUnknownMemberType]
+            chk.configure(text=f"{path_name}\t(Посл. скан.: {date})") # pyright: ignore[reportUnknownMemberType]
 
-    def start_scan(self):
-        selected_disks = [disk for disk, var in self.check_vars.items() if var.get()]
+    def scan_custom_folder(self):
+        """Открывает диалог выбора папки и сканирует её"""
+        folder_path = filedialog.askdirectory(title="Выберите папку для сканирования")
+        
+        if not folder_path:
+            return
+        
+        folder_path = os.path.abspath(folder_path)
 
-        if not selected_disks:
-            self.label.configure(text="Выберите хотя бы один диск!", text_color="red") # pyright: ignore[reportUnknownMemberType]
+        # Создаем новую базу данных для выбранной папки
+        new_db = create_database(folder_path)
+
+        self.databases[folder_path] = new_db
+
+        self.start_scan(folder_path)
+
+    def start_scan(self, custom_path: Optional[str] = None):
+        if custom_path:
+            selected_paths = [custom_path]
+        else:
+            selected_paths = [path for path, var in self.check_vars.items() if var.get()]
+
+        if not selected_paths:
+            self.label.configure(text="Выберите хотя бы один путь!", text_color="red") # pyright: ignore[reportUnknownMemberType]
             return
 
         # Блокируем интерфейс
@@ -114,7 +142,7 @@ class DiskIndexingApp(ctk.CTk):
         self.is_scanning = True
         
         # Запускаем поток логики
-        threading.Thread(target=self.run_logic, args=(selected_disks,), daemon=True).start()
+        threading.Thread(target=self.run_logic, args=(selected_paths,), daemon=True).start()
         # Показываем кнопку прерывания
         self.abort_button.grid() # pyright: ignore[reportUnknownMemberType]
         
@@ -143,15 +171,15 @@ class DiskIndexingApp(ctk.CTk):
         # Планируем следующий вызов через 100 мс
         self.after(100, self.update_progress_loop)
 
-    def run_logic(self, disks: list[str]):
+    def run_logic(self, paths: list[str]):
         try:
-            for disk in disks:
+            for path in paths:
                 # Сохраняем экземпляр в self, чтобы update_progress_loop мог его видеть
-                self.current_size_finder = SizeFinder(self.databases[disk], disk)
+                self.current_size_finder = SizeFinder(self.databases[path], path)
                 
                 # Обновляем текст в главном потоке (опционально)
-                self.label.configure(text=f"Сканирование диска: {disk}") # pyright: ignore[reportUnknownMemberType]
-                
+                self.label.configure(text=f"Сканирование: {path}") # pyright: ignore[reportUnknownMemberType]
+
                 self.run_result = self.current_size_finder.run()
             
             self.is_scanning = False

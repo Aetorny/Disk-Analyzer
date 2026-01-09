@@ -15,8 +15,7 @@ from typing import Any
 import utils.squarify_local as squarify
 from logic import Database
 from config import DATA_DIR, set_should_run_analyzer
-from utils import ColorCache
-from ui import format_bytes
+from utils import ColorCache, format_bytes
 
 
 CULLING_SIZE_PX = 2
@@ -173,21 +172,21 @@ class DiskVisualizerApp(ctk.CTk):
 
     def refresh_file_list(self):
         '''Обновление списка файлов'''
-        disks = sorted(self.databases.keys())
-        if disks:
-            logging.info(f'Обнаружены файлы дисков: {disks}')
-            self.combo_files.configure(values=disks) # pyright: ignore[reportUnknownMemberType]
-            self.combo_files.set(disks[0])
-            for file in disks:
+        paths = sorted([key for key, db in self.databases.items() if not db.is_empty()])
+        if paths:
+            logging.info(f'Обнаружены пути: {paths}')
+            self.combo_files.configure(values=paths) # pyright: ignore[reportUnknownMemberType]
+            self.combo_files.set(paths[0])
+            for file in paths:
                 logging.info(f'Запуск загрузки данных из {file}')
-            self.change_data(disks[0])
+            self.change_data(paths[0])
         else:
             logging.info(f'Данных в папке {DATA_DIR} не обнаружено')
             self.restart_app_label = ctk.CTkLabel(self.canvas_frame, text=f"Данные в папке {DATA_DIR}\nне обнаружены\nДобавьте файлы и запустите программу заново", font=("Arial", 20))
             self.restart_app_label.place(relx=0.5, rely=0.5, anchor="center") # pyright: ignore[reportUnknownMemberType]
 
-    def change_data(self, disk: str) -> None:
-        self.raw_data = self.databases[disk]
+    def change_data(self, path: str) -> None:
+        self.raw_data = self.databases[path]
         self.scan_root_path = self.raw_data['__root__']
         if self.scan_root_path in self.raw_data:
             size = self.raw_data[self.scan_root_path]['s']

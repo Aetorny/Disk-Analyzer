@@ -16,8 +16,8 @@ class SizeFinder:
     def __init__(self, database: Database, path: str, num_threads: Optional[int] = None) -> None:
         self.database = database
         self.starting_point = path
-        logging.info(f'Директории для обхода: {self.starting_point}')
-        
+        logging.info(f'Директория для обхода: {self.starting_point}')
+
         if num_threads:
             self.num_threads = num_threads
         else:
@@ -235,8 +235,12 @@ class SizeFinder:
     def run(self) -> bool:
         self.is_running = True
         logging.info(f'Начало сканирования {self.starting_point}')
-        # Получаем общий размер диска для прогресс-бара в UI
-        disk_usage_total = get_used_disk_size(self.starting_point)
+        if os.path.dirname(self.starting_point) != self.starting_point:
+            # Если текущая директория не корень системы, то определить заранее размер нельзя
+            total_usage = 0
+        else:
+            # Получаем общий размер диска для прогресс-бара в UI
+            total_usage = get_used_disk_size(self.starting_point)
 
         self.folders = {
             '__root__': {'path': self._normalize(self.starting_point)}
@@ -246,7 +250,7 @@ class SizeFinder:
         # Добавляем начальную точку (нормализованную)
         self.queue.put(self._normalize(self.starting_point))
 
-        self.total = disk_usage_total
+        self.total = total_usage
         self.current = 0
 
         gc.disable() # Отключаем GC для скорости при создании миллионов объектов
