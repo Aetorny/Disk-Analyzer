@@ -138,6 +138,7 @@ class DiskIndexingApp(ctk.CTk):
                 time.sleep(0.1)
         if self.find_files == 0:
             self.visualize_button.grid_remove()
+        self.db_check_threads = []
 
     def remove_scanned_db(self, path: str):
         """
