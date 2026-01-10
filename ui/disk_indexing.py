@@ -46,6 +46,8 @@ class DiskIndexingApp(ctk.CTk):
         self.check_vars: dict[str, ctk.BooleanVar] = {} 
         
         self.paths_frames: dict[str, tuple[ctk.CTkFrame, ctk.CTkLabel, ctk.CTkButton]] = {}
+        self.find_files = 0
+        self.db_check_threads: list[threading.Thread] = []
         if not self.paths:
             error_label = ctk.CTkLabel(self.scrollable_frame, text="Пути не найдены!")
             error_label.grid(row=0, column=0, padx=10, pady=10) # pyright: ignore[reportUnknownMemberType]
@@ -72,7 +74,10 @@ class DiskIndexingApp(ctk.CTk):
                 
                 self.paths_frames[path] = (path_frame, date_label, delete_button)
                 
-                threading.Thread(target=self.check_db_if_already_scanned, args=(path, delete_button, date_label), daemon=True).start()
+                self.db_check_threads.append(
+                    threading.Thread(target=self.check_db_if_already_scanned, args=(path, delete_button, date_label), daemon=True)
+                )
+                self.db_check_threads[-1].start()
 
             path_row = len(self.paths)
         
@@ -103,9 +108,10 @@ class DiskIndexingApp(ctk.CTk):
         self.abort_button.grid(row=5, column=0, padx=20, pady=(0, 20), sticky="ew") # pyright: ignore[reportUnknownMemberType]
         self.abort_button.grid_remove()
 
-        # Кнопка запуска визуализации (показывается только если есть .data файлы)
+        # Кнопка запуска визуализации (показывается только если есть файлы)
         self.visualize_button = ctk.CTkButton(self, text="Запустить визуализацию", command=self.abort_scan, fg_color="#4caf50")
         self.visualize_button.grid(row=6, column=0, padx=20, pady=(0, 20), sticky="ew") # pyright: ignore[reportUnknownMemberType]
+        threading.Thread(target=self.update_visualize_button, daemon=True).start()
 
         # Обработка закрытия окна (останавливает сканирование)
         try:
@@ -121,9 +127,17 @@ class DiskIndexingApp(ctk.CTk):
         date = self.databases[path_name].get('__date__')
         if date:
             date_label.configure(text=f"Посл. скан.: {format_date_to_time_ago(date)}") # pyright: ignore[reportUnknownMemberType]
+            self.find_files += 1
         else:
             date_label.destroy()
             delete_button.destroy()
+
+    def update_visualize_button(self) -> None:
+        for t in self.db_check_threads:
+            while t.is_alive():
+                time.sleep(0.1)
+        if self.find_files == 0:
+            self.visualize_button.grid_remove()
 
     def remove_scanned_db(self, path: str):
         """
