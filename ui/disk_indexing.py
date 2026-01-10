@@ -149,6 +149,8 @@ class DiskIndexingApp(ctk.CTk):
         if db_is_open:
             db.close()
         delete_database(db.path)
+        self.find_files -= 1
+        self.update_visualize_button()
         if not is_root(path):
             del self.databases[path]
             self.paths_frames[path][0].destroy()
