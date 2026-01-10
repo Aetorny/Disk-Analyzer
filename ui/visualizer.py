@@ -14,16 +14,15 @@ from typing import Any
 
 import utils.squarify_local as squarify
 from logic import Database
-from config import DATA_DIR, set_should_run_analyzer
+from config import DATA_DIR, set_should_run_analyzer, SETTINGS
 from utils import ColorCache, format_bytes
 
 
 CULLING_SIZE_PX = 2
-COLOR_MAP_NAME = 'turbo'
-COLOR_CACHE = ColorCache(COLOR_MAP_NAME)
+color_cache = ColorCache(SETTINGS['color_map']['current'])
 
-ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("blue")
+ctk.set_appearance_mode(SETTINGS['appearence_mode']['current'])
+ctk.set_default_color_theme('blue')
 
 
 class DiskVisualizerApp(ctk.CTk):
@@ -32,6 +31,9 @@ class DiskVisualizerApp(ctk.CTk):
 
         self.title("Disk Visualizer")
         self.geometry("1200x900")
+
+        # Создаем меню
+        self.create_menu()
 
         self.layout_cache: dict[tuple[Any, Any, Any], Any] = {}
         self.raw_data: Database
@@ -130,6 +132,166 @@ class DiskVisualizerApp(ctk.CTk):
             self.search_var.trace_add("write", self.on_search)
         self.search_data = set()
         self.after(100, self.trigger_render)
+
+    def create_menu(self):
+        """Создает меню приложения"""
+        # Получаем основное окно (которое использует tk.Tk)
+        menubar = Menu(self)
+        self.config(menu=menubar)
+        
+        # Меню "Меню"
+        menu_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Меню", menu=menu_menu)
+        menu_menu.add_command(label="Настройки", command=self.open_settings)
+        
+        # Меню "Справка"
+        help_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Справка", menu=help_menu)
+        help_menu.add_command(label="О программе", command=self.show_about)
+
+    def open_settings(self):
+        """Открывает окно редактирования настроек с современным интерфейсом"""
+        settings_window = ctk.CTkToplevel(self)
+        settings_window.title("Настройки")
+        settings_window.geometry("450x280")
+        settings_window.resizable(False, False)
+        settings_window.grab_set()
+        
+        # Заголовок
+        title_label = ctk.CTkLabel(settings_window, text="Настройки", font=("Arial", 18, "bold"))
+        title_label.pack(padx=20, pady=(20, 30)) # pyright: ignore[reportUnknownMemberType]
+        
+        # Основной контейнер для настроек
+        settings_container = ctk.CTkFrame(settings_window)
+        settings_container.pack(fill="both", expand=True, padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
+        settings_container.grid_columnconfigure(1, weight=1)
+        
+         # ===== РЕЖИМ ОТОБРАЖЕНИЯ =====
+        appearance_label = ctk.CTkLabel(settings_container, text="Режим отображения:", font=("Arial", 16))
+        appearance_label.grid(row=0, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        
+        current_appearance = SETTINGS['appearence_mode']['current']
+        available_appearances = SETTINGS['appearence_mode']['available']
+        appearance_options = [app for app in available_appearances]
+        
+        appearance_combo = ctk.CTkComboBox(
+            settings_container,
+            values=appearance_options,
+            state="readonly",
+            command=lambda value: self.on_appearance_changed(available_appearances[appearance_options.index(value)])
+        )
+        appearance_combo.set(current_appearance)
+        appearance_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+
+        # ===== Цветовая схема =====
+        color_map_label = ctk.CTkLabel(settings_container, text="Цветовая схема:", font=("Arial", 16))
+        color_map_label.grid(row=1, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        
+        current_color_map = SETTINGS['color_map']['current']
+        self.is_inverted_theme = False if not current_color_map.endswith('_r') else True
+        available_color_maps = sorted(SETTINGS['color_map']['available'], key=lambda x: x.lower())
+        color_map_options = [app for app in available_color_maps]
+        
+        color_map_combo = ctk.CTkComboBox(
+            settings_container,
+            values=color_map_options,
+            state="readonly",
+            command=lambda value: self.on_color_map_change(available_color_maps[color_map_options.index(value)])
+        )
+        color_map_combo.set(current_color_map.replace('_r', ''))
+        color_map_combo.grid(row=1, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+        
+        invert_theme_label = ctk.CTkLabel(settings_container, text="Инвертировать цветовую схему:", font=("Arial", 16))
+        invert_theme_label.grid(row=2, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        
+        self.invert_theme_check = ctk.CTkCheckBox(
+            settings_container,
+            text="",
+            command=self.on_invert_theme_change,
+            checkbox_width=24, 
+            checkbox_height=24,
+            corner_radius=8,
+            fg_color="blue",
+            hover_color="darkblue"
+        )
+        self.invert_theme_check.select() if self.is_inverted_theme else self.invert_theme_check.deselect()
+        self.invert_theme_check.grid(row=2, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+
+        # Кнопка закрытия
+        close_button = ctk.CTkButton(
+            settings_window,
+            text="Закрыть", 
+            command=settings_window.destroy,
+            fg_color="#3b3b3b",
+            height=40
+        )
+        close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
+
+    def on_appearance_changed(self, appearance: str):
+        """Обработчик изменения режима отображения"""
+        SETTINGS['appearence_mode']['current'] = appearance
+        SETTINGS.save()
+        ctk.set_appearance_mode(appearance)
+        logging.info(f"Режим отображения изменен на: {appearance}")
+
+    def on_invert_theme_change(self):
+        """Обработчик изменения инвертирования цветовой схемы"""
+        self.is_inverted_theme = not self.is_inverted_theme
+        self.on_color_map_change(SETTINGS['color_map']['current'])
+
+    def on_color_map_change(self, color_map: str):
+        """Обработчик изменения цветовой схемы"""
+        global color_cache
+        SETTINGS['color_map']['current'] = color_map.replace('_r', '') + ('_r' if self.is_inverted_theme else '')
+        SETTINGS.save()
+        color_cache = ColorCache(SETTINGS['color_map']['current'])
+        logging.info(f"Цветовая схема изменена на: {SETTINGS['color_map']['current']}")
+        self.after(0, self.trigger_render)
+
+    def show_about(self):
+        """Показывает окно 'О программе'"""
+        about_window = ctk.CTkToplevel(self)
+        about_window.title("О программе")
+        about_window.geometry("450x250")
+        about_window.resizable(False, False)
+        about_window.grab_set()
+        
+        # Основная информация о программе
+        title_label = ctk.CTkLabel(about_window, text="Disk Analyzer", font=("Arial", 18, "bold"))
+        title_label.pack(pady=(20, 10)) # pyright: ignore[reportUnknownMemberType]
+        
+        info_label = ctk.CTkLabel(
+            about_window, 
+            text="Программа для анализа и визуализации\nиспользования дискового пространства",
+            font=("Arial", 16),
+            justify="center"
+        )
+        info_label.pack(pady=10) # pyright: ignore[reportUnknownMemberType]
+        
+        # GitHub ссылка
+        github_frame = ctk.CTkFrame(about_window, fg_color="transparent")
+        github_frame.pack(pady=10) # pyright: ignore[reportUnknownMemberType]
+        
+        github_label = ctk.CTkLabel(github_frame, text="GitHub:", font=("Arial", 16))
+        github_label.pack(side="left", padx=5) # pyright: ignore[reportUnknownMemberType]
+        
+        github_link = ctk.CTkLabel(
+            github_frame, 
+            text="https://github.com/Aetorny/Disk-Analyzer",
+            font=("Arial", 16, "underline"),
+            text_color="#0066cc"
+        )
+        github_link.pack(side="left", padx=5) # pyright: ignore[reportUnknownMemberType]
+        
+        # Кнопка закрытия
+        close_button = ctk.CTkButton(
+            about_window, 
+            text="Закрыть", 
+            command=about_window.destroy,
+            fg_color="#3b3b3b",
+            height=40
+        )
+        close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
 
     def _on_search_thread(self) -> None:
         if self._search_lock.locked():
@@ -360,7 +522,7 @@ class DiskVisualizerApp(ctk.CTk):
             if dx < CULLING_SIZE_PX or dy < CULLING_SIZE_PX:
                 continue
 
-            rgb_color = COLOR_CACHE.get_color_rgb_and_text(size, self.global_max_log)
+            rgb_color = color_cache.get_color_rgb_and_text(size, self.global_max_log)
             r, g, b = rgb_color
             brightness = (r * 299 + g * 587 + b * 114) / 1000
             text_color = "black" if brightness > 128 else "white"
@@ -426,7 +588,7 @@ class DiskVisualizerApp(ctk.CTk):
                 rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
                 
                 if rdx > CULLING_SIZE_PX and rdy > CULLING_SIZE_PX:
-                    f_rgb = COLOR_CACHE.get_color_rgb_and_text(file['s'], self.global_max_log)
+                    f_rgb = color_cache.get_color_rgb_and_text(file['s'], self.global_max_log)
                     r, g, b = f_rgb
                     brightness = (r * 299 + g * 587 + b * 114) / 1000
                     text_color = "black" if brightness > 128 else "white"

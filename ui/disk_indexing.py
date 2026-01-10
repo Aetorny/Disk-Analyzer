@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import filedialog, Menu
 
 import os
 import time
@@ -7,13 +7,13 @@ import logging
 import threading
 from typing import Optional
 
-from config import set_should_run_visualizer
+from config import set_should_run_visualizer, SETTINGS
 from logic import SizeFinder, Database, is_root
 from utils import format_bytes, create_database, delete_database, format_date_to_time_ago
 
 
-ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("blue")
+ctk.set_appearance_mode(SETTINGS['appearence_mode']['current'])
+ctk.set_default_color_theme('blue')
 
 
 class DiskIndexingApp(ctk.CTk):
@@ -22,6 +22,9 @@ class DiskIndexingApp(ctk.CTk):
 
         self.title("Выбор путей для анализа")
         self.geometry("400x500")
+        
+        # Создаем меню
+        self.create_menu()
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -118,6 +121,123 @@ class DiskIndexingApp(ctk.CTk):
             self.protocol("WM_DELETE_WINDOW", self.on_close) # pyright: ignore[reportUnknownMemberType]
         except Exception:
             pass
+
+    def create_menu(self):
+        """Создает меню приложения"""
+        # Получаем основное окно (которое использует tk.Tk)
+        menubar = Menu(self)
+        self.config(menu=menubar)
+        
+        # Меню "Меню"
+        menu_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Меню", menu=menu_menu)
+        menu_menu.add_command(label="Настройки", command=self.open_settings)
+        
+        # Меню "Справка"
+        help_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Справка", menu=help_menu)
+        help_menu.add_command(label="О программе", command=self.show_about)
+
+    def open_settings(self):
+        """Открывает окно редактирования настроек с современным интерфейсом"""
+        settings_window = ctk.CTkToplevel(self)
+        settings_window.title("Настройки")
+        settings_window.geometry("450x280")
+        settings_window.resizable(False, False)
+        settings_window.grab_set()
+        
+        # Заголовок
+        title_label = ctk.CTkLabel(settings_window, text="Настройки", font=("Arial", 18, "bold"))
+        title_label.pack(padx=20, pady=(20, 30)) # pyright: ignore[reportUnknownMemberType]
+        
+        # Основной контейнер для настроек
+        settings_container = ctk.CTkFrame(settings_window)
+        settings_container.pack(fill="both", expand=True, padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
+        settings_container.grid_columnconfigure(1, weight=1)
+        
+        # ===== РЕЖИМ ОТОБРАЖЕНИЯ =====
+        appearance_label = ctk.CTkLabel(settings_container, text="Режим отображения:", font=("Arial", 13))
+        appearance_label.grid(row=0, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        
+        current_appearance = SETTINGS['appearence_mode']['current']
+        available_appearances = SETTINGS['appearence_mode']['available']
+        appearance_options = [self._format_label(app) for app in available_appearances]
+        
+        appearance_combo = ctk.CTkComboBox(
+            settings_container,
+            values=appearance_options,
+            state="readonly",
+            command=lambda value: self.on_appearance_changed(available_appearances[appearance_options.index(value)])
+        )
+        appearance_combo.set(self._format_label(current_appearance))
+        appearance_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+        
+        # Кнопка закрытия
+        close_button = ctk.CTkButton(
+            settings_window, 
+            text="Закрыть", 
+            command=settings_window.destroy,
+            fg_color="#3b3b3b",
+            height=40
+        )
+        close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
+
+    def _format_label(self, text: str) -> str:
+        """Форматирует текст опции для отображения"""
+        # Преобразует 'dark-blue' в 'Dark Blue', 'system' в 'System' и т.д.
+        return ' '.join(word.capitalize() for word in text.split('-'))
+
+    def on_appearance_changed(self, appearance: str):
+        """Обработчик изменения режима отображения"""
+        SETTINGS['appearence_mode']['current'] = appearance
+        SETTINGS.save()
+        ctk.set_appearance_mode(appearance)
+        logging.info(f"Режим отображения изменен на: {appearance}")
+
+    def show_about(self):
+        """Показывает окно 'О программе'"""
+        about_window = ctk.CTkToplevel(self)
+        about_window.title("О программе")
+        about_window.geometry("450x250")
+        about_window.resizable(False, False)
+        about_window.grab_set()
+        
+        # Основная информация о программе
+        title_label = ctk.CTkLabel(about_window, text="Disk Analyzer", font=("Arial", 18, "bold"))
+        title_label.pack(pady=(20, 10)) # pyright: ignore[reportUnknownMemberType]
+        
+        info_label = ctk.CTkLabel(
+            about_window, 
+            text="Программа для анализа и визуализации\nиспользования дискового пространства",
+            font=("Arial", 16),
+            justify="center"
+        )
+        info_label.pack(pady=10) # pyright: ignore[reportUnknownMemberType]
+        
+        # GitHub ссылка
+        github_frame = ctk.CTkFrame(about_window, fg_color="transparent")
+        github_frame.pack(pady=10) # pyright: ignore[reportUnknownMemberType]
+        
+        github_label = ctk.CTkLabel(github_frame, text="GitHub:", font=("Arial", 16))
+        github_label.pack(side="left", padx=5) # pyright: ignore[reportUnknownMemberType]
+        
+        github_link = ctk.CTkLabel(
+            github_frame, 
+            text="https://github.com/Aetorny/Disk-Analyzer",
+            font=("Arial", 16, "underline"),
+            text_color="#0066cc"
+        )
+        github_link.pack(side="left", padx=5) # pyright: ignore[reportUnknownMemberType]
+        
+        # Кнопка закрытия
+        close_button = ctk.CTkButton(
+            about_window, 
+            text="Закрыть", 
+            command=about_window.destroy,
+            fg_color="#3b3b3b",
+            height=40
+        )
+        close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
 
     def check_db_if_already_scanned(self, path_name: str, delete_button: ctk.CTkButton, date_label: ctk.CTkLabel):
         '''
