@@ -3,6 +3,8 @@ import sys
 import platform
 import logging
 
+from settings import Settings
+
 
 CURRENT_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
     else os.path.dirname(os.path.abspath(__file__))
@@ -32,3 +34,5 @@ def set_default_values() -> None:
 
 logging.basicConfig(level=logging.INFO, filename=os.path.join(DATA_DIR, "log.log"), filemode='w', format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
 logging.info(f'Конфигурационный файл успешно запущен. {CURRENT_DIR=}. {DATA_DIR=}. {PLATFORM=}. {IGNORE_PATHS=}')
+
+SETTINGS = Settings(os.path.join(DATA_DIR, "settings.json"))
