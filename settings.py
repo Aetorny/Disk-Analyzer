@@ -26,38 +26,50 @@ class Settings:
         logging.info('Создание стандартного конфигурационного файла...')
         self.data = {
             'appearence_mode': {
-                'current': 'system',
-                'available': ['system', 'light', 'dark']
+                'current': 'dark',
+                'available': ['light', 'dark']
             },
-            'theme': {
-                'current': 'blue',
-                'available': ['blue', 'green', 'dark-blue']
+            'color_map': {
+                'current': 'turbo',
+                'available': [
+                    "Blues",
+                    "BuPu",
+                    "CMRmap",
+                    "Grays",
+                    "Greens",
+                    "Oranges",
+                    "Purples",
+                    "RdBu",
+                    "RdGy",
+                    "Spectral",
+                    "autumn",
+                    "jet",
+                    "turbo"
+                ]
             }
         }
-        self._save()
+        self.save()
         logging.info('Стандартный конфигурационный файл создан.')
 
-    def _save(self) -> None:
+    def save(self) -> None:
         logging.info('Сохранение конфигурационного файла...')
         try:
             with open(self.path, 'w') as f:
-                json.dump(self.data, f)
+                json.dump(self.data, f, indent=4, ensure_ascii=False)
         except Exception as e:
             logging.error(f'Ошибка при сохранении конфигурационного файла: {e}')
             return
 
         logging.info('Конфигурационный файл успешно сохранен.')
 
-    def __getattr__(self, name: str) -> Any:
+    def __getitem__(self, name: str) -> Any:
         return self.data[name]
 
-    def __setattr__(self, name: str, value: Any) -> None:
+    def __setitem__(self, name: str, value: Any) -> None:
         self.data[name] = value
-        self._save()
 
     def __delattr__(self, name: str) -> None:
         del self.data[name]
-        self._save()
 
     def get(self, name: str, default: Any = None) -> Any:
         if name in self.data:
