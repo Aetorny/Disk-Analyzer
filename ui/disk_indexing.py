@@ -5,6 +5,7 @@ import os
 import time
 import logging
 import threading
+import webbrowser
 from typing import Optional
 
 from config import set_should_run_visualizer, SETTINGS
@@ -220,9 +221,11 @@ class DiskIndexingApp(ctk.CTk):
             github_frame, 
             text="https://github.com/Aetorny/Disk-Analyzer",
             font=("Arial", 16, "underline"),
-            text_color="#0066cc"
+            text_color="#0066cc",
+            cursor="hand2",
         )
         github_link.pack(side="left", padx=5) # pyright: ignore[reportUnknownMemberType]
+        github_link.bind("<Button-1>", lambda _: webbrowser.open("https://github.com/Aetorny/Disk-Analyzer")) # type: ignore
         
         # Кнопка закрытия
         close_button = ctk.CTkButton(

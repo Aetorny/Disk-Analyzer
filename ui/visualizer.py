@@ -279,9 +279,11 @@ class DiskVisualizerApp(ctk.CTk):
             github_frame, 
             text="https://github.com/Aetorny/Disk-Analyzer",
             font=("Arial", 16, "underline"),
-            text_color="#0066cc"
+            text_color="#0066cc",
+            cursor="hand2"
         )
         github_link.pack(side="left", padx=5) # pyright: ignore[reportUnknownMemberType]
+        github_link.bind("<Button-1>", lambda _: webbrowser.open("https://github.com/Aetorny/Disk-Analyzer")) # type: ignore
         
         # Кнопка закрытия
         close_button = ctk.CTkButton(
