@@ -161,7 +161,7 @@ class DiskIndexingApp(ctk.CTk):
         
         current_appearance = SETTINGS['appearence_mode']['current']
         available_appearances = SETTINGS['appearence_mode']['available']
-        appearance_options = [self._format_label(app) for app in available_appearances]
+        appearance_options = [app for app in available_appearances]
         
         appearance_combo = ctk.CTkComboBox(
             settings_container,
@@ -169,7 +169,7 @@ class DiskIndexingApp(ctk.CTk):
             state="readonly",
             command=lambda value: self.on_appearance_changed(available_appearances[appearance_options.index(value)])
         )
-        appearance_combo.set(self._format_label(current_appearance))
+        appearance_combo.set(current_appearance)
         appearance_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
         
         # Кнопка закрытия
@@ -181,11 +181,6 @@ class DiskIndexingApp(ctk.CTk):
             height=40
         )
         close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
-
-    def _format_label(self, text: str) -> str:
-        """Форматирует текст опции для отображения"""
-        # Преобразует 'dark-blue' в 'Dark Blue', 'system' в 'System' и т.д.
-        return ' '.join(word.capitalize() for word in text.split('-'))
 
     def on_appearance_changed(self, appearance: str):
         """Обработчик изменения режима отображения"""
