@@ -413,7 +413,7 @@ class DiskVisualizerApp(ctk.CTk):
         if not self.current_root: return
         w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
         
-        cache_key = (self.current_root, w, h)
+        cache_key = (self.current_root, w, h, SETTINGS['color_map']['current'])
         
         logging.info('Запуск пайплайна отрисовки')
         threading.Thread(target=self._render_pipeline, args=(w, h, cache_key), daemon=True).start()
