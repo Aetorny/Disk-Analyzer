@@ -64,3 +64,12 @@ msgstr "Данные в папке "
 
 msgid "\nnot found\nAdd files and restart the program"
 msgstr "\nне обнаружены\nДобавьте файлы и запустите программу заново"
+
+msgid "Language:"
+msgstr "Язык:"
+
+msgid "You must restart the application\nto apply the changes"
+msgstr "Необходимо перезапустить приложение\nдля применения изменений"
+
+msgid "Restart required"
+msgstr "Необходим перезапуск"

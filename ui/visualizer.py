@@ -171,9 +171,31 @@ class DiskVisualizerApp(ctk.CTk):
         settings_container.pack(fill="both", expand=True, padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
         settings_container.grid_columnconfigure(1, weight=1)
         
+        # ===== ЯЗЫК =====
+        language_label = ctk.CTkLabel(settings_container, text=_("Language:"), font=("Arial", 13))
+        language_label.grid(row=0, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        
+        current_language = SETTINGS['language']['current']
+        available_languages = SETTINGS['language']['available']
+        language_names: dict[str, str] = {
+            'en': 'English',
+            'ru': 'Русский'
+        }
+        language_options = [language_names.get(lang, lang) for lang in available_languages]
+
+
+        language_combo = ctk.CTkComboBox(
+            settings_container,
+            values=language_options, # type: ignore
+            state="readonly",
+            command=lambda value: self.on_language_changed(available_languages[language_options.index(value)])
+        )
+        language_combo.set(language_names.get(current_language, current_language)) # type: ignore
+        language_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+
          # ===== РЕЖИМ ОТОБРАЖЕНИЯ =====
         appearance_label = ctk.CTkLabel(settings_container, text=_("Display mode:"), font=("Arial", 16))
-        appearance_label.grid(row=0, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        appearance_label.grid(row=1, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
         
         current_appearance = SETTINGS['appearence_mode']['current']
         available_appearances = SETTINGS['appearence_mode']['available']
@@ -186,11 +208,11 @@ class DiskVisualizerApp(ctk.CTk):
             command=lambda value: self.on_appearance_changed(available_appearances[appearance_options.index(value)])
         )
         appearance_combo.set(current_appearance)
-        appearance_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+        appearance_combo.grid(row=1, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
 
         # ===== Цветовая схема =====
         color_map_label = ctk.CTkLabel(settings_container, text=_("Color scheme:"), font=("Arial", 16))
-        color_map_label.grid(row=1, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        color_map_label.grid(row=2, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
         
         current_color_map = SETTINGS['color_map']['current']
         self.is_inverted_theme = False if not current_color_map.endswith('_r') else True
@@ -204,10 +226,10 @@ class DiskVisualizerApp(ctk.CTk):
             command=lambda value: self.on_color_map_change(available_color_maps[color_map_options.index(value)])
         )
         color_map_combo.set(current_color_map.replace('_r', ''))
-        color_map_combo.grid(row=1, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+        color_map_combo.grid(row=2, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
         
         invert_theme_label = ctk.CTkLabel(settings_container, text=_("Invert color scheme:"), font=("Arial", 16))
-        invert_theme_label.grid(row=2, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
+        invert_theme_label.grid(row=3, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
         
         self.invert_theme_check = ctk.CTkCheckBox(
             settings_container,
@@ -220,7 +242,7 @@ class DiskVisualizerApp(ctk.CTk):
             hover_color="darkblue"
         )
         self.invert_theme_check.select() if self.is_inverted_theme else self.invert_theme_check.deselect()
-        self.invert_theme_check.grid(row=2, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
+        self.invert_theme_check.grid(row=3, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
 
         # Кнопка закрытия
         close_button = ctk.CTkButton(
@@ -238,6 +260,26 @@ class DiskVisualizerApp(ctk.CTk):
         SETTINGS.save()
         ctk.set_appearance_mode(appearance)
         logging.info(f"Режим отображения изменен на: {appearance}")
+
+    def show_pop_up_after_change_language(self) -> None:
+        pop_up = ctk.CTkToplevel(self)
+        pop_up.title(TRANSLATOR.gettext('disk_indexing')("Restart required"))
+        pop_up.geometry("350x150")
+        pop_up.resizable(False, False)
+        pop_up.grab_set()
+        label = ctk.CTkLabel(pop_up, text=TRANSLATOR.gettext('disk_indexing')("You must restart the application\nto apply the changes"), font=("Arial", 18))
+        label.pack(pady=(20, 10)) # pyright: ignore[reportUnknownMemberType]
+        button = ctk.CTkButton(pop_up, text=_("Close"), command=pop_up.destroy, fg_color="#3b3b3b", height=40)
+        button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
+
+    def on_language_changed(self, language: str):
+        """Обработчик изменения языка"""
+        SETTINGS['language']['current'] = language
+        SETTINGS.save()
+        TRANSLATOR.change_language(language)
+        logging.info(f"Язык изменен на: {language}")
+
+        self.show_pop_up_after_change_language()
 
     def on_invert_theme_change(self):
         """Обработчик изменения инвертирования цветовой схемы"""

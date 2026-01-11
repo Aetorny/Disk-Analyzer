@@ -79,3 +79,12 @@ msgstr "Сканирование прервано"
 
 msgid "Stopping..."
 msgstr "Остановка..."
+
+msgid "Language:"
+msgstr "Язык:"
+
+msgid "You must restart the application\nto apply the changes"
+msgstr "Необходимо перезапустить приложение\nдля применения изменений"
+
+msgid "Restart required"
+msgstr "Необходим перезапуск"
