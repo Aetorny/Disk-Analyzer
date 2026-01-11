@@ -73,3 +73,9 @@ msgstr "Необходимо перезапустить приложение\nд
 
 msgid "Restart required"
 msgstr "Необходим перезапуск"
+
+msgid "Loading complete"
+msgstr "Загрузка завершена"
+
+msgid "Update"
+msgstr "Обновить"

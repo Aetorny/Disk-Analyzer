@@ -10,7 +10,7 @@ from typing import Optional
 
 from config import set_should_run_visualizer, SETTINGS, TRANSLATOR
 from logic import SizeFinder, Database, is_root
-from utils import format_bytes, create_database, delete_database, format_date_to_time_ago
+from utils import format_bytes, create_database, delete_database, format_date_to_time_ago, update_language
 
 
 _ = TRANSLATOR.gettext('disk_indexing')
@@ -171,7 +171,6 @@ class DiskIndexingApp(ctk.CTk):
         }
         language_options = [language_names.get(lang, lang) for lang in available_languages]
 
-
         language_combo = ctk.CTkComboBox(
             settings_container,
             values=language_options, # type: ignore
@@ -181,6 +180,16 @@ class DiskIndexingApp(ctk.CTk):
         language_combo.set(language_names.get(current_language, current_language)) # type: ignore
         language_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
         
+        update_language_button = ctk.CTkButton(
+            settings_container,
+            text=_("Update"),
+            font=("Arial", 12),
+            width=35,
+            command=self.on_update_language,
+            fg_color="#258ba5"
+        )
+        update_language_button.grid(row=0, column=2, sticky="ew", pady=(0, 15), padx=(0, 20)) # pyright: ignore[reportUnknownMemberType]
+
         # ===== РЕЖИМ ОТОБРАЖЕНИЯ =====
         appearance_label = ctk.CTkLabel(settings_container, text=_("Display mode:"), font=("Arial", 13))
         appearance_label.grid(row=1, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
@@ -207,6 +216,14 @@ class DiskIndexingApp(ctk.CTk):
             height=40
         )
         close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
+    
+    def on_update_language(self):
+        update_language(SETTINGS['language']['current'])
+        TRANSLATOR.change_language(SETTINGS['language']['current'])
+        self.show_pop_up_after_change_language([
+            "Loading complete",
+            "You must restart the application\nto apply the changes"
+        ])
 
     def on_appearance_changed(self, appearance: str):
         """Обработчик изменения режима отображения"""
@@ -215,13 +232,13 @@ class DiskIndexingApp(ctk.CTk):
         ctk.set_appearance_mode(appearance)
         logging.info(f"Режим отображения изменен на: {appearance}")
 
-    def show_pop_up_after_change_language(self) -> None:
+    def show_pop_up_after_change_language(self, text: list[str]) -> None:
         pop_up = ctk.CTkToplevel(self)
-        pop_up.title(TRANSLATOR.gettext('disk_indexing')("Restart required"))
+        pop_up.title(TRANSLATOR.gettext('disk_indexing')(text[0]))
         pop_up.geometry("350x150")
         pop_up.resizable(False, False)
         pop_up.grab_set()
-        label = ctk.CTkLabel(pop_up, text=TRANSLATOR.gettext('disk_indexing')("You must restart the application\nto apply the changes"), font=("Arial", 18))
+        label = ctk.CTkLabel(pop_up, text=TRANSLATOR.gettext('disk_indexing')(text[1]), font=("Arial", 18))
         label.pack(pady=(20, 10)) # pyright: ignore[reportUnknownMemberType]
         button = ctk.CTkButton(pop_up, text=_("Close"), command=pop_up.destroy, fg_color="#3b3b3b", height=40)
         button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
@@ -233,7 +250,10 @@ class DiskIndexingApp(ctk.CTk):
         TRANSLATOR.change_language(language)
         logging.info(f"Язык изменен на: {language}")
 
-        self.show_pop_up_after_change_language()
+        self.show_pop_up_after_change_language([
+            "Restart required",
+            "You must restart the application\nto apply the changes"
+        ])
 
     def show_about(self):
         """Показывает окно 'О программе' """
