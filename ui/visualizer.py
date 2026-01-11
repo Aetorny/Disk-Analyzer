@@ -14,7 +14,7 @@ from typing import Any
 
 import utils.squarify_local as squarify
 from logic import Database
-from config import DATA_DIR, set_should_run_analyzer, SETTINGS
+from config import DATA_DIR, set_should_run_analyzer, SETTINGS, PLATFORM
 from utils import ColorCache, format_bytes
 
 
@@ -98,6 +98,8 @@ class DiskVisualizerApp(ctk.CTk):
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=5) # pyright: ignore[reportUnknownMemberType]
 
         self.context_menu = Menu(self, tearoff=0)
+        if PLATFORM == 'Windows':
+            self.context_menu.add_command(label="Открыть в проводнике", command=self.open_in_explorer)
         self.context_menu.add_command(label="Копировать путь", command=self.copy_path)
         self.context_menu.add_command(label="Копировать имя", command=self.copy_name)
         self.selected_item = None
@@ -698,6 +700,10 @@ class DiskVisualizerApp(ctk.CTk):
                 finally:
                     self.context_menu.grab_release()
                 return
+
+    def open_in_explorer(self):
+        if self.selected_item and self.selected_item[4]:
+            os.startfile(self.selected_item[4])
 
     def copy_path(self):
         if self.selected_item and self.selected_item[4]:
