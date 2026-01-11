@@ -32,6 +32,9 @@ class DiskVisualizerApp(ctk.CTk):
     def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
+        global _
+        _ = TRANSLATOR.gettext('disk_indexing')
+
         self.title(_("Disk Visualizer"))
         self.geometry("1200x900")
 
@@ -271,15 +274,19 @@ class DiskVisualizerApp(ctk.CTk):
         ctk.set_appearance_mode(appearance)
         logging.info(f"Режим отображения изменен на: {appearance}")
 
+    def on_restart(self):
+        set_should_run_analyzer(True)
+        self.destroy()
+
     def show_pop_up_after_change_language(self, text: list[str]) -> None:
         pop_up = ctk.CTkToplevel(self)
-        pop_up.title(TRANSLATOR.gettext('disk_indexing')(text[0]))
+        pop_up.title(TRANSLATOR.gettext('visualizer')(text[0]))
         pop_up.geometry("350x150")
         pop_up.resizable(False, False)
         pop_up.grab_set()
-        label = ctk.CTkLabel(pop_up, text=TRANSLATOR.gettext('disk_indexing')(text[1]), font=("Arial", 18))
+        label = ctk.CTkLabel(pop_up, text=TRANSLATOR.gettext('visualizer')(text[1]), font=("Arial", 18))
         label.pack(pady=(20, 10)) # pyright: ignore[reportUnknownMemberType]
-        button = ctk.CTkButton(pop_up, text=_("Close"), command=pop_up.destroy, fg_color="#3b3b3b", height=40)
+        button = ctk.CTkButton(pop_up, text=TRANSLATOR.gettext('visualizer')("Restart"), font=("Arial", 20), command=self.on_restart, fg_color="#991b1b", height=40)
         button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
 
     def on_language_changed(self, language: str):

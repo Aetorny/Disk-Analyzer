@@ -79,3 +79,6 @@ msgstr "Загрузка завершена"
 
 msgid "Update"
 msgstr "Обновить"
+
+msgid "Restart"
+msgstr "Перезапустить"

@@ -8,7 +8,7 @@ import threading
 import webbrowser
 from typing import Optional
 
-from config import set_should_run_visualizer, SETTINGS, TRANSLATOR
+from config import set_should_run_visualizer, set_should_run_analyzer, SETTINGS, TRANSLATOR
 from logic import SizeFinder, Database, is_root
 from utils import format_bytes, create_database, delete_database, format_date_to_time_ago, update_language
 
@@ -23,6 +23,9 @@ ctk.set_default_color_theme('blue')
 class DiskIndexingApp(ctk.CTk):
     def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
+
+        global _
+        _ = TRANSLATOR.gettext('disk_indexing')
 
         self.title(_("Selecting paths for analysis"))
         self.geometry("400x500")
@@ -224,6 +227,13 @@ class DiskIndexingApp(ctk.CTk):
         ctk.set_appearance_mode(appearance)
         logging.info(f"Режим отображения изменен на: {appearance}")
 
+    def on_restart(self):
+        global _
+        _ = TRANSLATOR.gettext('disk_indexing')
+        set_should_run_analyzer(True)
+        set_should_run_visualizer(False)
+        self.destroy()
+
     def show_pop_up_after_change_language(self, text: list[str]) -> None:
         pop_up = ctk.CTkToplevel(self)
         pop_up.title(TRANSLATOR.gettext('disk_indexing')(text[0]))
@@ -232,7 +242,7 @@ class DiskIndexingApp(ctk.CTk):
         pop_up.grab_set()
         label = ctk.CTkLabel(pop_up, text=TRANSLATOR.gettext('disk_indexing')(text[1]), font=("Arial", 18))
         label.pack(pady=(20, 10)) # pyright: ignore[reportUnknownMemberType]
-        button = ctk.CTkButton(pop_up, text=_("Close"), command=pop_up.destroy, fg_color="#3b3b3b", height=40)
+        button = ctk.CTkButton(pop_up, text=TRANSLATOR.gettext('disk_indexing')("Restart"), font=("Arial", 20), command=self.on_restart, fg_color="#991b1b", height=40)
         button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
 
     def on_language_changed(self, language: str):

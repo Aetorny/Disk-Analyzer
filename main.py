@@ -2,6 +2,7 @@ import logging
 
 from utils import load_all_databases, update_language
 from config import set_default_values, SETTINGS, LANGUAGE, TRANSLATOR
+from ui import DiskVisualizerApp, DiskIndexingApp
 
 
 def check_language():
@@ -17,7 +18,6 @@ def check_language():
 
 def main() -> None:
     check_language()
-    from ui import DiskVisualizerApp, DiskIndexingApp
 
     databases = load_all_databases()
     logging.info(f'Получено {len(databases)} баз данных')
