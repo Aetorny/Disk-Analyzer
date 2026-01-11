@@ -25,6 +25,10 @@ class Settings:
     def _generate_default_settings(self) -> None:
         logging.info('Создание стандартного конфигурационного файла...')
         self.data = {
+            "language": {
+                "current": "en",
+                "available": ["en", "ru"]
+            },
             'appearence_mode': {
                 'current': 'dark',
                 'available': ['light', 'dark']

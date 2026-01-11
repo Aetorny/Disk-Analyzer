@@ -1,4 +1,7 @@
 from datetime import datetime
+from config import TRANSLATOR
+
+_, ngettext = TRANSLATOR.gettext('formatting'), TRANSLATOR.ngettext('formatting')
 
 
 def format_bytes(size: float) -> str:
@@ -16,14 +19,6 @@ def format_path(path: str) -> str:
     return path.replace(':', '').replace('/', '_').replace('\\', '_').strip('_')
 
 
-def _plural(n: int, forms: list[str]) -> str:
-    '''
-    Возвращает верную форму слова в зависимости от количества
-    '''
-    return forms[0] if n % 10 == 1 and n % 100 != 11 else \
-           forms[1] if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else \
-           forms[2]
-
 def format_date_to_time_ago(date_str: str) -> str:
     date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
     now = datetime.now()
@@ -35,9 +30,15 @@ def format_date_to_time_ago(date_str: str) -> str:
     days = delta.days
 
     if days > 0:
-        return f"{days} {_plural(days, ['день', 'дня', 'дней'])} назад"
+        msg = ngettext("{n} day ago", "{n} days ago", days)
+        return msg.format(n=days)
+
     if hours > 0:
-        return f"{hours} {_plural(hours, ['час', 'часа', 'часов'])} назад"
+        msg = ngettext("{n} hour ago", "{n} hours ago", hours)
+        return msg.format(n=hours)
+
     if minutes > 0:
-        return f"{minutes} {_plural(minutes, ['минута', 'минуты', 'минут'])} назад"
-    return "только что"
+        msg = ngettext("{n} minute ago", "{n} minutes ago", minutes)
+        return msg.format(n=minutes)
+
+    return _("just now")

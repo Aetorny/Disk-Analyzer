@@ -1,0 +1,31 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+## --- Время ---
+# --- Дни ---
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} день назад"
+msgstr[1] "{n} дня назад"
+msgstr[2] "{n} дней назад"
+
+# --- Часы ---
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} час назад"
+msgstr[1] "{n} часа назад"
+msgstr[2] "{n} часов назад"
+
+# --- Минуты ---
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} минута назад"
+msgstr[1] "{n} минуты назад"
+msgstr[2] "{n} минут назад"
+
+# --- Остальное ---
+msgid "just now"
+msgstr "только что"
+

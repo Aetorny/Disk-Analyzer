@@ -1,0 +1,81 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Selecting paths for analysis"
+msgstr "Выбор путей для анализа"
+
+msgid "Select paths to scan:"
+msgstr "Выберите пути для сканирования:"
+
+msgid "Available paths"
+msgstr "Доступные пути"
+
+msgid "No paths found!"
+msgstr "Пути не найдены!"
+
+msgid "Scan specific folder..."
+msgstr "Сканировать конкретную папку..."
+
+msgid "Start analysis"
+msgstr "Начать анализ"
+
+msgid "Abort"
+msgstr "Прервать"
+
+msgid "Start visualization"
+msgstr "Запустить визуализацию"
+
+msgid "Menu"
+msgstr "Меню"
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Help"
+msgstr "Справка"
+
+msgid "About"
+msgstr "О программе"
+
+msgid "Display mode:"
+msgstr "Режим отображения:"
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "Program for analyzing and visualizing\ndisk space usage"
+msgstr "Программа для анализа и визуализации\nиспользования дискового пространства"
+
+msgid "Last scan:"
+msgstr "Посл. скан.:"
+
+msgid "Select folder to scan"
+msgstr "Выберите папку для сканирования"
+
+msgid "Select at least one path!"
+msgstr "Выберите хотя бы один путь!"
+
+msgid "Scanning..."
+msgstr "Идет сканирование..."
+
+msgid "Please wait..."
+msgstr "Пожалуйста, подождите..."
+
+msgid "Processed:"
+msgstr "Обработано:"
+
+msgid "Counting files..."
+msgstr "Подсчет файлов..."
+
+msgid "Scanning:"
+msgstr "Сканирование:"
+
+msgid "Error"
+msgstr "Ошибка"
+
+msgid "Scan aborted"
+msgstr "Сканирование прервано"
+
+msgid "Stopping..."
+msgstr "Остановка..."

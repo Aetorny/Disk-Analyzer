@@ -4,6 +4,7 @@ import platform
 import logging
 
 from settings import Settings
+from translator import Translator
 
 
 CURRENT_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
@@ -32,7 +33,10 @@ def set_default_values() -> None:
     is_should_run_visualizer = True
     is_should_run_analyzer = False
 
-logging.basicConfig(level=logging.INFO, filename=os.path.join(DATA_DIR, "log.log"), filemode='w', format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
+logging.basicConfig(level=logging.INFO, filename=os.path.join(DATA_DIR, "log.log"), encoding='utf-8', filemode='w', format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
 logging.info(f'Конфигурационный файл успешно запущен. {CURRENT_DIR=}. {DATA_DIR=}. {PLATFORM=}. {IGNORE_PATHS=}')
 
 SETTINGS = Settings(os.path.join(DATA_DIR, "settings.json"))
+
+TRANSLATOR = Translator()
+TRANSLATOR.change_language(SETTINGS['language']['current'])

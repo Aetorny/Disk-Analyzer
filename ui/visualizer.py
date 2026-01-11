@@ -14,8 +14,11 @@ from typing import Any
 
 import utils.squarify_local as squarify
 from logic import Database
-from config import DATA_DIR, set_should_run_analyzer, SETTINGS, PLATFORM
+from config import DATA_DIR, set_should_run_analyzer, SETTINGS, PLATFORM, TRANSLATOR
 from utils import ColorCache, format_bytes
+
+
+_ = TRANSLATOR.gettext('visualizer')
 
 
 CULLING_SIZE_PX = 2
@@ -29,7 +32,7 @@ class DiskVisualizerApp(ctk.CTk):
     def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
-        self.title("Disk Visualizer")
+        self.title(_("Disk Visualizer"))
         self.geometry("1200x900")
 
         # Создаем меню
@@ -64,7 +67,7 @@ class DiskVisualizerApp(ctk.CTk):
         self.btn_return_to_analyzer = ctk.CTkButton(self.top_frame, text="⬅", width=30, fg_color="red", command=self.return_to_analyzer)
         self.btn_return_to_analyzer.pack(side="left", padx=(5, 2)) # pyright: ignore[reportUnknownMemberType]
 
-        self.btn_up = ctk.CTkButton(self.top_frame, text="⬆ Вверх", width=60, command=self.go_up_level, state="disabled")
+        self.btn_up = ctk.CTkButton(self.top_frame, text="⬆ "+_("Up"), width=60, command=self.go_up_level, state="disabled")
         self.btn_up.pack(side="left", padx=(5, 2)) # pyright: ignore[reportUnknownMemberType]
 
         self.breadcrumb_frame = ctk.CTkFrame(self.top_frame, fg_color="transparent")
@@ -94,14 +97,14 @@ class DiskVisualizerApp(ctk.CTk):
         self.bind("<Control-F>", self.toggle_search_bar)
         self.bind("<Escape>", self.hide_search_bar)
 
-        self.status_bar = ctk.CTkLabel(self, text="Ready", anchor="w", height=25, font=("Arial", 14))
+        self.status_bar = ctk.CTkLabel(self, text=_("Program is ready"), anchor="w", height=25, font=("Arial", 14))
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=5) # pyright: ignore[reportUnknownMemberType]
 
         self.context_menu = Menu(self, tearoff=0)
         if PLATFORM == 'Windows':
-            self.context_menu.add_command(label="Открыть в проводнике", command=self.open_in_explorer)
-        self.context_menu.add_command(label="Копировать путь", command=self.copy_path)
-        self.context_menu.add_command(label="Копировать имя", command=self.copy_name)
+            self.context_menu.add_command(label=_("Open in Explorer"), command=self.open_in_explorer)
+        self.context_menu.add_command(label=_("Copy path"), command=self.copy_path)
+        self.context_menu.add_command(label=_("Copy name"), command=self.copy_name)
         self.selected_item = None
 
         self.tooltip_bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="#2b2b2b", outline="#a0a0a0", state="hidden")
@@ -112,13 +115,13 @@ class DiskVisualizerApp(ctk.CTk):
         self.refresh_file_list()
         self.after(1000, self.trigger_render)
 
-    def toggle_search_bar(self, *_: Any) -> None:
+    def toggle_search_bar(self, *_args: Any) -> None:
         self.is_search_bar_active = not self.is_search_bar_active
         if self.is_search_bar_active:
             self.search_entry = ctk.CTkEntry(
                 self.top_frame,
                 textvariable=self.search_var,
-                placeholder_text="Поиск",
+                placeholder_text=_("Search"),
                 width=250
             )
             self.search_entry.pack() # pyright: ignore[reportUnknownMemberType]
@@ -126,7 +129,7 @@ class DiskVisualizerApp(ctk.CTk):
         else:
             self.hide_search_bar(None)
 
-    def hide_search_bar(self, _: Any) -> None:
+    def hide_search_bar(self, *_args: Any) -> None:
         if self.search_entry:
             self.search_entry.destroy()
             self.is_search_bar_active = False
@@ -143,24 +146,24 @@ class DiskVisualizerApp(ctk.CTk):
         
         # Меню "Меню"
         menu_menu = Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Меню", menu=menu_menu)
-        menu_menu.add_command(label="Настройки", command=self.open_settings)
+        menubar.add_cascade(label=_("Menu"), menu=menu_menu)
+        menu_menu.add_command(label=_("Settings"), command=self.open_settings)
         
         # Меню "Справка"
         help_menu = Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Справка", menu=help_menu)
-        help_menu.add_command(label="О программе", command=self.show_about)
+        menubar.add_cascade(label=_("Help"), menu=help_menu)
+        help_menu.add_command(label=_("About"), command=self.show_about)
 
     def open_settings(self):
         """Открывает окно редактирования настроек с современным интерфейсом"""
         settings_window = ctk.CTkToplevel(self)
-        settings_window.title("Настройки")
+        settings_window.title(_("Settings"))
         settings_window.geometry("450x280")
         settings_window.resizable(False, False)
         settings_window.grab_set()
         
         # Заголовок
-        title_label = ctk.CTkLabel(settings_window, text="Настройки", font=("Arial", 18, "bold"))
+        title_label = ctk.CTkLabel(settings_window, text=_("Settings"), font=("Arial", 18, "bold"))
         title_label.pack(padx=20, pady=(20, 30)) # pyright: ignore[reportUnknownMemberType]
         
         # Основной контейнер для настроек
@@ -169,7 +172,7 @@ class DiskVisualizerApp(ctk.CTk):
         settings_container.grid_columnconfigure(1, weight=1)
         
          # ===== РЕЖИМ ОТОБРАЖЕНИЯ =====
-        appearance_label = ctk.CTkLabel(settings_container, text="Режим отображения:", font=("Arial", 16))
+        appearance_label = ctk.CTkLabel(settings_container, text=_("Display mode:"), font=("Arial", 16))
         appearance_label.grid(row=0, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
         
         current_appearance = SETTINGS['appearence_mode']['current']
@@ -186,7 +189,7 @@ class DiskVisualizerApp(ctk.CTk):
         appearance_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
 
         # ===== Цветовая схема =====
-        color_map_label = ctk.CTkLabel(settings_container, text="Цветовая схема:", font=("Arial", 16))
+        color_map_label = ctk.CTkLabel(settings_container, text=_("Color scheme:"), font=("Arial", 16))
         color_map_label.grid(row=1, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
         
         current_color_map = SETTINGS['color_map']['current']
@@ -203,7 +206,7 @@ class DiskVisualizerApp(ctk.CTk):
         color_map_combo.set(current_color_map.replace('_r', ''))
         color_map_combo.grid(row=1, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
         
-        invert_theme_label = ctk.CTkLabel(settings_container, text="Инвертировать цветовую схему:", font=("Arial", 16))
+        invert_theme_label = ctk.CTkLabel(settings_container, text=_("Invert color scheme:"), font=("Arial", 16))
         invert_theme_label.grid(row=2, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
         
         self.invert_theme_check = ctk.CTkCheckBox(
@@ -222,7 +225,7 @@ class DiskVisualizerApp(ctk.CTk):
         # Кнопка закрытия
         close_button = ctk.CTkButton(
             settings_window,
-            text="Закрыть", 
+            text=_("Close"), 
             command=settings_window.destroy,
             fg_color="#3b3b3b",
             height=40
@@ -264,7 +267,7 @@ class DiskVisualizerApp(ctk.CTk):
         
         info_label = ctk.CTkLabel(
             about_window, 
-            text="Программа для анализа и визуализации\nиспользования дискового пространства",
+            text=_("Program for analyzing and visualizing\ndisk space usage"),
             font=("Arial", 16),
             justify="center"
         )
@@ -290,7 +293,7 @@ class DiskVisualizerApp(ctk.CTk):
         # Кнопка закрытия
         close_button = ctk.CTkButton(
             about_window, 
-            text="Закрыть", 
+            text=_("Close"), 
             command=about_window.destroy,
             fg_color="#3b3b3b",
             height=40
@@ -327,7 +330,7 @@ class DiskVisualizerApp(ctk.CTk):
             self._search_workers -= 1
             self.after(0, self.trigger_render)
 
-    def on_search(self, *_: Any) -> None:
+    def on_search(self, *_args: Any) -> None:
         search_str = self.search_var.get().strip().lower()
         if search_str == '':
             self.search_data = set()
@@ -348,7 +351,7 @@ class DiskVisualizerApp(ctk.CTk):
             self.change_data(paths[0])
         else:
             logging.info(f'Данных в папке {DATA_DIR} не обнаружено')
-            self.restart_app_label = ctk.CTkLabel(self.canvas_frame, text=f"Данные в папке {DATA_DIR}\nне обнаружены\nДобавьте файлы и запустите программу заново", font=("Arial", 20))
+            self.restart_app_label = ctk.CTkLabel(self.canvas_frame, text=_("Data in folder ") + DATA_DIR + "\nnot found\nAdd files and restart the program", font=("Arial", 20))
             self.restart_app_label.place(relx=0.5, rely=0.5, anchor="center") # pyright: ignore[reportUnknownMemberType]
 
     def change_data(self, path: str) -> None:
@@ -409,7 +412,7 @@ class DiskVisualizerApp(ctk.CTk):
             if accumulated_path != self.current_root:
                 ctk.CTkLabel(self.breadcrumb_frame, text="›", width=12, text_color="#777777").pack(side="left") # pyright: ignore[reportUnknownMemberType]
 
-    def on_resize(self, _: Any):
+    def on_resize(self, _event: Any):
         if self._resize_job: self.after_cancel(self._resize_job)
         self._resize_job = self.after(100, self.trigger_render) # Чуть быстрее реакция
 
@@ -436,7 +439,7 @@ class DiskVisualizerApp(ctk.CTk):
                 # Список (y1, y2, x1, x2, r, g, b)
                 rects: list[tuple[float, float, float, float, float, float, float]] = []
                 # Список (x, y, text, font, color, anchor)
-                texts: list[tuple[float, float, str, str, str | None]] = []
+                texts: list[tuple[float, float, str, str]] = []
                 # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
                 hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
                 logging.info('Начало расчета макета')
@@ -492,7 +495,7 @@ class DiskVisualizerApp(ctk.CTk):
             ctx.select_font_face("Arial", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
             ctx.set_font_size(14) 
 
-            for tx, ty, ttext, tcol, _ in texts:
+            for tx, ty, ttext, tcol in texts:
                 if tcol == 'black':
                     ctx.set_source_rgb(0, 0, 0)
                 else:
@@ -510,7 +513,7 @@ class DiskVisualizerApp(ctk.CTk):
     def _calculate_layout(
             self,
             rects: list[tuple[float, float, float, float, float, float, float]],
-            texts: list[tuple[float, float, str, str, str | None]],
+            texts: list[tuple[float, float, str, str]],
             hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
             path_str: str,
             size: float, x: float, y: float, dx: float, dy: float,
@@ -543,7 +546,7 @@ class DiskVisualizerApp(ctk.CTk):
                 header_h = 20
                 max_chars = int(dx / 10)
                 disp_name = name if len(name) <= max_chars else name[:max_chars] + "..."
-                texts.append((x+4, y+3, disp_name, text_color, None))
+                texts.append((x+4, y+3, disp_name, text_color))
 
             pad = 2
             norm_w, norm_h = dx - 2*pad, dy - header_h - 2*pad
@@ -605,7 +608,7 @@ class DiskVisualizerApp(ctk.CTk):
                         name = file['n']
                         dname = name if len(name) <= max_chars else name[:max_chars] + "..."
 
-                        texts.append((rx+4, ry+3, dname, text_color, None))
+                        texts.append((rx+4, ry+3, dname, text_color))
                     
                     hit_map.append((rx, ry, rx+rdx, ry+rdy, file['p'], name, file['s'], False, True))
         end_time = time.perf_counter()
@@ -638,8 +641,8 @@ class DiskVisualizerApp(ctk.CTk):
             current_root_size = self.raw_data[self.current_root]['s'] or 1
             pct = (found[6] / current_root_size * 100)
             is_file = found[8]
-            type_label = "Файл" if is_file else "Папка"
-            if found[7]: type_label = "Группа"
+            type_label = _("File") if is_file else _("Folder")
+            if found[7]: type_label = _("Group")
             
             x1, y1, x2, y2 = found[0], found[1], found[2], found[3]
             
@@ -677,7 +680,7 @@ class DiskVisualizerApp(ctk.CTk):
             self.canvas.itemconfigure(self.tooltip_text, state="hidden")
             self.canvas.itemconfigure(self.tooltip_bg, state="hidden")
             
-            self.status_bar.configure(text="Ready") # pyright: ignore
+            self.status_bar.configure(text=_("Program is ready")) # pyright: ignore
 
     def on_left_click(self, event: Any):
         mx, my = event.x, event.y

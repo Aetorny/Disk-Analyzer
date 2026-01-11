@@ -1,0 +1,66 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Disk Visualizer"
+msgstr "Визуализатор диска"
+
+msgid "Up"
+msgstr "Вверх"
+
+msgid "Program is ready"
+msgstr "Программа готова к работе"
+
+msgid "Open in Explorer"
+msgstr "Открыть в проводнике"
+
+msgid "Copy path"
+msgstr "Копировать путь"
+
+msgid "Copy name"
+msgstr "Копировать имя"
+
+msgid "Search"
+msgstr "Поиск"
+
+msgid "Menu"
+msgstr "Меню"
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Help"
+msgstr "Справка"
+
+msgid "About"
+msgstr "О программе"
+
+msgid "Display mode:"
+msgstr "Режим отображения:"
+
+msgid "Color scheme:"
+msgstr "Цветовая схема:"
+
+msgid "Invert color scheme:"
+msgstr "Инвертировать цветовую схему:"
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "Folder"
+msgstr "Папка"
+
+msgid "Group"
+msgstr "Группа"
+
+msgid "Program for analyzing and visualizing\ndisk space usage"
+msgstr "Программа для анализа и визуализации\nиспользования дискового пространства"
+
+msgid "Data in folder "
+msgstr "Данные в папке "
+
+msgid "\nnot found\nAdd files and restart the program"
+msgstr "\nне обнаружены\nДобавьте файлы и запустите программу заново"

@@ -8,9 +8,12 @@ import threading
 import webbrowser
 from typing import Optional
 
-from config import set_should_run_visualizer, SETTINGS
+from config import set_should_run_visualizer, SETTINGS, TRANSLATOR
 from logic import SizeFinder, Database, is_root
 from utils import format_bytes, create_database, delete_database, format_date_to_time_ago
+
+
+_ = TRANSLATOR.gettext('disk_indexing')
 
 
 ctk.set_appearance_mode(SETTINGS['appearence_mode']['current'])
@@ -21,7 +24,7 @@ class DiskIndexingApp(ctk.CTk):
     def __init__(self, databases: dict[str, Database]):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
-        self.title("Выбор путей для анализа")
+        self.title(_("Selecting paths for analysis"))
         self.geometry("400x500")
         
         # Создаем меню
@@ -36,11 +39,11 @@ class DiskIndexingApp(ctk.CTk):
         self.run_result = None
 
         # Заголовок
-        self.label = ctk.CTkLabel(self, text="Выберите пути для сканирования:", font=("Arial", 16, "bold"))
+        self.label = ctk.CTkLabel(self, text=_("Select paths to scan:"), font=("Arial", 16, "bold"))
         self.label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew") # pyright: ignore[reportUnknownMemberType]
 
         # Контейнер для списка пути
-        self.scrollable_frame = ctk.CTkScrollableFrame(self, label_text="Доступные пути")
+        self.scrollable_frame = ctk.CTkScrollableFrame(self, label_text=_("Available paths"))
         self.scrollable_frame.grid(row=1, column=0, padx=20, pady=10, sticky="nsew") # pyright: ignore[reportUnknownMemberType]
         self.scrollable_frame.grid_columnconfigure(0, weight=1)
 
@@ -53,7 +56,7 @@ class DiskIndexingApp(ctk.CTk):
         self.find_files = 0
         self.db_check_threads: list[threading.Thread] = []
         if not self.paths:
-            error_label = ctk.CTkLabel(self.scrollable_frame, text="Пути не найдены!")
+            error_label = ctk.CTkLabel(self.scrollable_frame, text=_("No paths found!"))
             error_label.grid(row=0, column=0, padx=10, pady=10) # pyright: ignore[reportUnknownMemberType]
             path_row = 1
         else:
@@ -86,7 +89,7 @@ class DiskIndexingApp(ctk.CTk):
             path_row = len(self.paths)
         
         # Кнопка для сканирования произвольной папки
-        self.scan_folder_button = ctk.CTkButton(self.scrollable_frame, text="Сканировать конкретную папку...", command=self.scan_custom_folder, fg_color="#3b3b3b")
+        self.scan_folder_button = ctk.CTkButton(self.scrollable_frame, text=_("Scan specific folder..."), command=self.scan_custom_folder, fg_color="#3b3b3b")
         self.scan_folder_button.grid(row=path_row, column=0, padx=10, pady=(10, 10), sticky="ew") # pyright: ignore[reportUnknownMemberType]
 
         # Прогресс бар
@@ -101,19 +104,19 @@ class DiskIndexingApp(ctk.CTk):
         self.status_label.grid_remove()
 
         # Кнопка запуска
-        self.start_button = ctk.CTkButton(self, text="Начать анализ", command=self.start_scan)
+        self.start_button = ctk.CTkButton(self, text=_("Start analysis"), command=self.start_scan)
         self.start_button.grid(row=4, column=0, padx=20, pady=20, sticky="ew") # pyright: ignore[reportUnknownMemberType]
         
         if not self.paths:
             self.start_button.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
 
         # Кнопка для досрочного завершения (скрыта по умолчанию)
-        self.abort_button = ctk.CTkButton(self, text="Прервать", command=self.abort_scan_and_dont_run_visualizer, fg_color="#d9534f")
+        self.abort_button = ctk.CTkButton(self, text=_("Abort"), command=self.abort_scan_and_dont_run_visualizer, fg_color="#d9534f")
         self.abort_button.grid(row=5, column=0, padx=20, pady=(0, 20), sticky="ew") # pyright: ignore[reportUnknownMemberType]
         self.abort_button.grid_remove()
 
         # Кнопка запуска визуализации (показывается только если есть файлы)
-        self.visualize_button = ctk.CTkButton(self, text="Запустить визуализацию", command=self.abort_scan, fg_color="#4caf50")
+        self.visualize_button = ctk.CTkButton(self, text=_("Start visualization"), command=self.abort_scan, fg_color="#4caf50")
         self.visualize_button.grid(row=6, column=0, padx=20, pady=(0, 20), sticky="ew") # pyright: ignore[reportUnknownMemberType]
         threading.Thread(target=self.update_visualize_button, daemon=True).start()
 
@@ -131,24 +134,24 @@ class DiskIndexingApp(ctk.CTk):
         
         # Меню "Меню"
         menu_menu = Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Меню", menu=menu_menu)
-        menu_menu.add_command(label="Настройки", command=self.open_settings)
+        menubar.add_cascade(label=_("Menu"), menu=menu_menu)
+        menu_menu.add_command(label=_("Settings"), command=self.open_settings)
         
         # Меню "Справка"
         help_menu = Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Справка", menu=help_menu)
-        help_menu.add_command(label="О программе", command=self.show_about)
+        menubar.add_cascade(label=_("Help"), menu=help_menu)
+        help_menu.add_command(label=_("About"), command=self.show_about)
 
     def open_settings(self):
         """Открывает окно редактирования настроек с современным интерфейсом"""
         settings_window = ctk.CTkToplevel(self)
-        settings_window.title("Настройки")
+        settings_window.title(_("Settings"))
         settings_window.geometry("450x280")
         settings_window.resizable(False, False)
         settings_window.grab_set()
         
         # Заголовок
-        title_label = ctk.CTkLabel(settings_window, text="Настройки", font=("Arial", 18, "bold"))
+        title_label = ctk.CTkLabel(settings_window, text=_("Settings"), font=("Arial", 18, "bold"))
         title_label.pack(padx=20, pady=(20, 30)) # pyright: ignore[reportUnknownMemberType]
         
         # Основной контейнер для настроек
@@ -157,7 +160,7 @@ class DiskIndexingApp(ctk.CTk):
         settings_container.grid_columnconfigure(1, weight=1)
         
         # ===== РЕЖИМ ОТОБРАЖЕНИЯ =====
-        appearance_label = ctk.CTkLabel(settings_container, text="Режим отображения:", font=("Arial", 13))
+        appearance_label = ctk.CTkLabel(settings_container, text=_("Display mode:"), font=("Arial", 13))
         appearance_label.grid(row=0, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]
         
         current_appearance = SETTINGS['appearence_mode']['current']
@@ -176,7 +179,7 @@ class DiskIndexingApp(ctk.CTk):
         # Кнопка закрытия
         close_button = ctk.CTkButton(
             settings_window, 
-            text="Закрыть", 
+            text=_("Close"), 
             command=settings_window.destroy,
             fg_color="#3b3b3b",
             height=40
@@ -191,9 +194,9 @@ class DiskIndexingApp(ctk.CTk):
         logging.info(f"Режим отображения изменен на: {appearance}")
 
     def show_about(self):
-        """Показывает окно 'О программе'"""
+        """Показывает окно 'О программе' """
         about_window = ctk.CTkToplevel(self)
-        about_window.title("О программе")
+        about_window.title(_("About"))
         about_window.geometry("450x250")
         about_window.resizable(False, False)
         about_window.grab_set()
@@ -204,7 +207,7 @@ class DiskIndexingApp(ctk.CTk):
         
         info_label = ctk.CTkLabel(
             about_window, 
-            text="Программа для анализа и визуализации\nиспользования дискового пространства",
+            text=_("Program for analyzing and visualizing\ndisk space usage"),
             font=("Arial", 16),
             justify="center"
         )
@@ -230,7 +233,7 @@ class DiskIndexingApp(ctk.CTk):
         # Кнопка закрытия
         close_button = ctk.CTkButton(
             about_window, 
-            text="Закрыть", 
+            text=_("Close"), 
             command=about_window.destroy,
             fg_color="#3b3b3b",
             height=40
@@ -244,7 +247,7 @@ class DiskIndexingApp(ctk.CTk):
         '''
         date = self.databases[path_name].get('__date__')
         if date:
-            date_label.configure(text=f"Посл. скан.: {format_date_to_time_ago(date)}") # pyright: ignore[reportUnknownMemberType]
+            date_label.configure(text=_("Last scan:") + f"{format_date_to_time_ago(date)}") # pyright: ignore[reportUnknownMemberType]
             self.find_files += 1
         else:
             date_label.destroy()
@@ -281,7 +284,7 @@ class DiskIndexingApp(ctk.CTk):
 
     def scan_custom_folder(self):
         """Открывает диалог выбора папки и сканирует её"""
-        folder_path = filedialog.askdirectory(title="Выберите папку для сканирования")
+        folder_path = filedialog.askdirectory(title=_("Select folder to scan"))
         
         if not folder_path:
             return
@@ -302,12 +305,12 @@ class DiskIndexingApp(ctk.CTk):
             selected_paths = [path for path, var in self.check_vars.items() if var.get()]
 
         if not selected_paths:
-            self.label.configure(text="Выберите хотя бы один путь!", text_color="red") # pyright: ignore[reportUnknownMemberType]
+            self.label.configure(text=_("Select at least one path!"), text_color="red") # pyright: ignore[reportUnknownMemberType]
             return
 
         # Блокируем интерфейс
-        self.label.configure(text="Идет сканирование...", text_color=("black", "white")) # pyright: ignore[reportUnknownMemberType]
-        self.start_button.configure(state="disabled", text="Пожалуйста, подождите...") # pyright: ignore[reportUnknownMemberType]
+        self.label.configure(text=_("Scanning..."), text_color=("black", "white")) # pyright: ignore[reportUnknownMemberType]
+        self.start_button.configure(state="disabled", text=_("Please wait...")) # pyright: ignore[reportUnknownMemberType]
         for child in self.scrollable_frame.winfo_children():
             if isinstance(child, ctk.CTkSwitch):
                 child.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
@@ -341,11 +344,11 @@ class DiskIndexingApp(ctk.CTk):
             if total > 0:
                 progress = current / total
                 self.progress_bar.set(progress) # pyright: ignore[reportUnknownMemberType]
-                self.status_label.configure(text=f"Обработано: {format_bytes(current)} / {format_bytes(total)} ({int(progress*100)}%)") # pyright: ignore[reportUnknownMemberType]
+                self.status_label.configure(text=_("Processed:") + f"{format_bytes(current)} / {format_bytes(total)} ({int(progress*100)}%)") # pyright: ignore[reportUnknownMemberType]
             else:
                 # Если total еще не подсчитан или равен 0
                 self.progress_bar.set(0) # pyright: ignore[reportUnknownMemberType]
-                self.status_label.configure(text=f"Подсчет файлов... {format_bytes(current)}") # pyright: ignore[reportUnknownMemberType]
+                self.status_label.configure(text=_("Counting files...") + f"{format_bytes(current)}") # pyright: ignore[reportUnknownMemberType]
 
         # Планируем следующий вызов через 100 мс
         self.after(100, self.update_progress_loop)
@@ -357,7 +360,7 @@ class DiskIndexingApp(ctk.CTk):
                 self.current_size_finder = SizeFinder(self.databases[path], path)
                 
                 # Обновляем текст в главном потоке (опционально)
-                self.label.configure(text=f"Сканирование: {path}") # pyright: ignore[reportUnknownMemberType]
+                self.label.configure(text=_("Scanning:") + f"{path}") # pyright: ignore[reportUnknownMemberType]
 
                 self.run_result = self.current_size_finder.run()
             
@@ -366,7 +369,7 @@ class DiskIndexingApp(ctk.CTk):
         except Exception as e:
             self.is_scanning = False
             logging.error(f"Ошибка при сканировании: {e}")
-            self.after(0, lambda: self.label.configure(text=f"Ошибка", text_color="red")) # pyright: ignore[reportUnknownMemberType]
+            self.after(0, lambda: self.label.configure(text=_("Error"), text_color="red")) # pyright: ignore[reportUnknownMemberType]
 
     def abort_scan_and_dont_run_visualizer(self):
         set_should_run_visualizer(False)
@@ -380,8 +383,8 @@ class DiskIndexingApp(ctk.CTk):
 
         # Обновляем состояние UI
         if self.is_scanning:
-            self.label.configure(text="Сканирование прервано", text_color="red") # pyright: ignore[reportUnknownMemberType]
-            self.status_label.configure(text="Остановка...") # pyright: ignore[reportUnknownMemberType]
+            self.label.configure(text=_("Scan aborted"), text_color="red") # pyright: ignore[reportUnknownMemberType]
+            self.status_label.configure(text=_("Stopping...")) # pyright: ignore[reportUnknownMemberType]
         self.abort_button.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
         self.is_scanning = False
 
