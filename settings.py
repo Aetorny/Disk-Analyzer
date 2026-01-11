@@ -4,6 +4,13 @@ import logging
 from typing import Any
 
 
+REQUIRED_SETTINGS = [
+    'language',
+    'appearence_mode',
+    'color_map'
+]
+
+
 class Settings:
     def __init__(self, settings_path: str) -> None:
         logging.info(f'Загрузка конфигурационного файла: {settings_path}')
@@ -14,6 +21,7 @@ class Settings:
             try:
                 with open(self.path, 'r') as f:
                     self.data = json.load(f)
+                self._check_data()
             except Exception as e:
                 logging.error(f'Ошибка при загрузке конфигурационного файла: {e}')
                 return self._generate_default_settings()
@@ -21,6 +29,12 @@ class Settings:
             logging.info(f'Конфигурационный файл успешно загружен.')
         else:
             self._generate_default_settings()
+
+    def _check_data(self) -> None:
+        for setting in REQUIRED_SETTINGS:
+            if setting not in self.data:
+                self._generate_default_settings()
+                return
 
     def _generate_default_settings(self) -> None:
         logging.info('Создание стандартного конфигурационного файла...')
