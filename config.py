@@ -17,6 +17,18 @@ if not os.path.exists(DATA_DIR):
 PLATFORM = platform.system()
 IGNORE_PATHS: set[str] = set(["/proc", "/sys", "/dev", "/run", "/tmp"]) if PLATFORM != "Windows" else set()
 
+
+def path_to_resource(relative_path: str):
+    """ Получает абсолютный путь к ресурсам, работает и для dev, и для PyInstaller """
+    try:
+        # PyInstaller создает временную папку в _MEIPASS
+        base_path = sys._MEIPASS # type: ignore
+    except Exception:
+        base_path = CURRENT_DIR
+
+    return os.path.join(base_path, relative_path) # type: ignore
+
+
 def get_language() -> str:
     LANGUAGE_NAMES: dict[str, str] = {
         'Russian': 'ru',

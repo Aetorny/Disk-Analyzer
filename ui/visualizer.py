@@ -29,7 +29,7 @@ ctk.set_default_color_theme('blue')
 
 
 class DiskVisualizerApp(ctk.CTk):
-    def __init__(self, databases: dict[str, Database]):
+    def __init__(self, databases: dict[str, Database], icon_path: str):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
         global _
@@ -44,6 +44,7 @@ class DiskVisualizerApp(ctk.CTk):
         self.layout_cache: dict[tuple[Any, Any, Any], Any] = {}
         self.raw_data: Database
         self.databases = databases
+        self.icon_path = icon_path
         self.search_data: set[str] = set()
         self.current_root: str = ""
         self.scan_root_path: str = ""
@@ -164,6 +165,7 @@ class DiskVisualizerApp(ctk.CTk):
         settings_window.geometry("550x280")
         settings_window.resizable(False, False)
         settings_window.grab_set()
+        settings_window.after(200, lambda: settings_window.iconbitmap(self.icon_path)) # type: ignore
         
         # Заголовок
         title_label = ctk.CTkLabel(settings_window, text=_("Settings"), font=("Arial", 18, "bold"))
@@ -323,6 +325,7 @@ class DiskVisualizerApp(ctk.CTk):
         about_window.geometry("450x250")
         about_window.resizable(False, False)
         about_window.grab_set()
+        about_window.after(200, lambda: about_window.iconbitmap(self.icon_path)) # type: ignore
         
         # Основная информация о программе
         title_label = ctk.CTkLabel(about_window, text="Disk Analyzer", font=("Arial", 18, "bold"))

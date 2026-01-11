@@ -2,7 +2,7 @@ import threading
 import logging
 
 from utils import load_all_databases, update_language
-from config import set_default_values, SETTINGS, LANGUAGE, TRANSLATOR
+from config import set_default_values, SETTINGS, LANGUAGE, TRANSLATOR, path_to_resource
 from ui import DiskVisualizerApp, DiskIndexingApp
 import ui.loader_animation as loader_animation
 
@@ -25,6 +25,7 @@ def main() -> None:
     databases = load_all_databases()
     logging.info(f'Получено {len(databases)} баз данных')
     logging.info(f'Ключи баз данных: {list(databases.keys())}')
+    icon_path = path_to_resource("icon.ico")
     try:
         while True:
             set_default_values()
@@ -32,12 +33,14 @@ def main() -> None:
             for db in databases.values():
                 db.open()
 
-            indexing_app = DiskIndexingApp(databases)
+            indexing_app = DiskIndexingApp(databases, icon_path)
+            indexing_app.iconbitmap(icon_path) # pyright: ignore[reportUnknownMemberType]
             indexing_app.mainloop() # pyright: ignore[reportUnknownMemberType]
 
             from config import is_should_run_visualizer
             if is_should_run_visualizer:
-                visualizer_app = DiskVisualizerApp(databases)
+                visualizer_app = DiskVisualizerApp(databases, icon_path)
+                visualizer_app.iconbitmap(icon_path) # pyright: ignore[reportUnknownMemberType]
                 visualizer_app.mainloop() # pyright: ignore[reportUnknownMemberType]
             
             from config import is_should_run_analyzer

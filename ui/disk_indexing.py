@@ -21,7 +21,7 @@ ctk.set_default_color_theme('blue')
 
 
 class DiskIndexingApp(ctk.CTk):
-    def __init__(self, databases: dict[str, Database]):
+    def __init__(self, databases: dict[str, Database], icon_path: str):
         super().__init__() # pyright: ignore[reportUnknownMemberType]
 
         global _
@@ -53,6 +53,7 @@ class DiskIndexingApp(ctk.CTk):
         # Получаем пути и создаем чекбоксы
         self.paths = sorted(databases.keys())
         self.databases = databases
+        self.icon_path = icon_path
         self.check_vars: dict[str, ctk.BooleanVar] = {} 
         
         self.paths_frames: dict[str, tuple[ctk.CTkFrame, ctk.CTkLabel, ctk.CTkButton]] = {}
@@ -152,6 +153,7 @@ class DiskIndexingApp(ctk.CTk):
         settings_window.geometry("450x320")
         settings_window.resizable(False, False)
         settings_window.grab_set()
+        settings_window.after(200, lambda: settings_window.iconbitmap(self.icon_path)) # type: ignore
         
         # Заголовок
         title_label = ctk.CTkLabel(settings_window, text=_("Settings"), font=("Arial", 18, "bold"))
@@ -265,6 +267,7 @@ class DiskIndexingApp(ctk.CTk):
         about_window.geometry("450x250")
         about_window.resizable(False, False)
         about_window.grab_set()
+        about_window.after(200, lambda: about_window.iconbitmap(self.icon_path)) # type: ignore
         
         # Основная информация о программе
         title_label = ctk.CTkLabel(about_window, text="Disk Analyzer", font=("Arial", 18, "bold"))
