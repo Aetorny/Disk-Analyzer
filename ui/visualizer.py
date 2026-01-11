@@ -265,6 +265,8 @@ class DiskVisualizerApp(ctk.CTk):
         close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
 
     def on_update_language(self):
+        if SETTINGS['language']['current'] == 'en':
+            return
         update_language(SETTINGS['language']['current'])
         TRANSLATOR.change_language(SETTINGS['language']['current'])
         self.show_pop_up_after_change_language([
@@ -294,8 +296,9 @@ class DiskVisualizerApp(ctk.CTk):
         """Обработчик изменения языка"""
         SETTINGS['language']['current'] = language
         SETTINGS.save()
-        TRANSLATOR.change_language(language)
-        logging.info(f"Язык изменен на: {language}")
+        if not TRANSLATOR.change_language(language):
+            self.on_update_language()
+            return
 
         self.show_pop_up_after_change_language([
             "Restart required",

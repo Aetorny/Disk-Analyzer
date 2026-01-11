@@ -21,16 +21,16 @@ class Translator:
         }
         self.current_language = 'en'
 
-    def change_language(self, lang: str):
+    def change_language(self, lang: str) -> bool:
         logging.info(f'Загрузка перевода: {lang}')
         if self.current_language == lang:
-            return
+            return True
         if lang == 'en':
             self.translates = {
                 file: gettext.NullTranslations() for file in FILES
             }
             self.current_language = 'en'
-            return
+            return True
 
         try:
             for file in FILES:
@@ -55,6 +55,9 @@ class Translator:
                 file: gettext.NullTranslations() for file in FILES
             }
             self.current_language = 'en'
+            return False
+
+        return True
 
     def gettext(self, filename: str):
         return self.translates[filename].gettext
