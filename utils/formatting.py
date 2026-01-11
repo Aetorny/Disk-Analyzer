@@ -1,8 +1,6 @@
 from datetime import datetime
 from config import TRANSLATOR
 
-_, ngettext = TRANSLATOR.gettext('formatting'), TRANSLATOR.ngettext('formatting')
-
 
 def format_bytes(size: float) -> str:
     if size == 0: return "0 B"
@@ -30,15 +28,15 @@ def format_date_to_time_ago(date_str: str) -> str:
     days = delta.days
 
     if days > 0:
-        msg = ngettext("{n} day ago", "{n} days ago", days)
+        msg = TRANSLATOR.ngettext('formatting')("{n} day ago", "{n} days ago", days)
         return msg.format(n=days)
 
     if hours > 0:
-        msg = ngettext("{n} hour ago", "{n} hours ago", hours)
+        msg = TRANSLATOR.ngettext('formatting')("{n} hour ago", "{n} hours ago", hours)
         return msg.format(n=hours)
 
     if minutes > 0:
-        msg = ngettext("{n} minute ago", "{n} minutes ago", minutes)
+        msg = TRANSLATOR.ngettext('formatting')("{n} minute ago", "{n} minutes ago", minutes)
         return msg.format(n=minutes)
 
-    return _("just now")
+    return TRANSLATOR.gettext('formatting')("just now")

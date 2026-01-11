@@ -5,6 +5,7 @@ from typing import Any
 
 
 REQUIRED_SETTINGS = [
+    'is_first_run',
     'language',
     'appearence_mode',
     'color_map'
@@ -39,6 +40,7 @@ class Settings:
     def _generate_default_settings(self) -> None:
         logging.info('Создание стандартного конфигурационного файла...')
         self.data = {
+            'is_first_run': True,
             "language": {
                 "current": "en",
                 "available": ["en", "ru"]

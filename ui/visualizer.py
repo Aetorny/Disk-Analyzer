@@ -193,16 +193,6 @@ class DiskVisualizerApp(ctk.CTk):
         language_combo.set(language_names.get(current_language, current_language)) # type: ignore
         language_combo.grid(row=0, column=1, sticky="ew", pady=(0, 15), padx=(20, 0)) # pyright: ignore[reportUnknownMemberType]
 
-        update_language_button = ctk.CTkButton(
-            settings_container,
-            text=_("Update"),
-            font=("Arial", 12),
-            width=35,
-            command=self.on_update_language,
-            fg_color="#258ba5"
-        )
-        update_language_button.grid(row=0, column=2, sticky="ew", pady=(0, 15), padx=(0, 20)) # pyright: ignore[reportUnknownMemberType]
-
         # ===== РЕЖИМ ОТОБРАЖЕНИЯ =====
         appearance_label = ctk.CTkLabel(settings_container, text=_("Display mode:"), font=("Arial", 16))
         appearance_label.grid(row=1, column=0, sticky="w", pady=(0, 15)) # pyright: ignore[reportUnknownMemberType]

@@ -1,11 +1,24 @@
 import logging
 
-from ui import DiskVisualizerApp, DiskIndexingApp
-from utils import load_all_databases
-from config import set_default_values
+from utils import load_all_databases, update_language
+from config import set_default_values, SETTINGS, LANGUAGE, TRANSLATOR
+
+
+def check_language():
+    if not SETTINGS['is_first_run']:
+        return
+    if LANGUAGE != SETTINGS['language']['current']:
+        if update_language(LANGUAGE):
+            SETTINGS['language']['current'] = LANGUAGE
+            SETTINGS['is_first_run'] = False
+            SETTINGS.save()
+            TRANSLATOR.change_language(LANGUAGE)
 
 
 def main() -> None:
+    check_language()
+    from ui import DiskVisualizerApp, DiskIndexingApp
+
     databases = load_all_databases()
     logging.info(f'Получено {len(databases)} баз данных')
     logging.info(f'Ключи баз данных: {list(databases.keys())}')

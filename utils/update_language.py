@@ -6,10 +6,10 @@ from config import DATA_DIR
 from translator import FILES
 
 
-def update_language(lang: str):
+def update_language(lang: str) -> bool:
     logging.info(f'Загрузка перевода: {lang}')
     if lang == 'en':
-        return
+        return True
     
     if not os.path.exists(os.path.join(DATA_DIR, 'locales', lang)):
         os.makedirs(os.path.join(DATA_DIR, 'locales', lang))
@@ -23,6 +23,8 @@ def update_language(lang: str):
             )
 
         logging.info(f'Перевод успешно загружен: {lang}')
+        return True
 
     except Exception as e:
         logging.error(f'Ошибка при загрузке перевода: {e}')
+        return False
