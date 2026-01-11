@@ -409,7 +409,7 @@ class DiskVisualizerApp(ctk.CTk):
 
     def on_resize(self, _: Any):
         if self._resize_job: self.after_cancel(self._resize_job)
-        self._resize_job = self.after(10, self.trigger_render) # Чуть быстрее реакция
+        self._resize_job = self.after(100, self.trigger_render) # Чуть быстрее реакция
 
     def trigger_render(self):
         if not self.current_root: return
