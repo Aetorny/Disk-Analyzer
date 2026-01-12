@@ -45,7 +45,6 @@ class Database:
         if self.is_open:
             self.close()
         try:
-            offset = 0
             index: dict[str, tuple[int, int]] = {}  # {ключ: (смещение, длина)}
             
             with open(self.path, 'wb') as f:
@@ -54,12 +53,12 @@ class Database:
                     data_bytes = marshal.dumps(value)
                     length = len(data_bytes)
                     
+                    offset = f.tell()
                     # 2. Пишем данные
                     f.write(data_bytes)
                     
                     # 3. Запоминаем, где они лежат
                     index[key] = (offset, length)
-                    offset += length
                     
                 # 4. В конце файла пишем сам индекс
                 index_bytes = marshal.dumps(index)
