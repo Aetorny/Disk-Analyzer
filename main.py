@@ -4,20 +4,21 @@ import logging
 from utils import load_all_databases, update_language
 from config import set_default_values, SETTINGS, LANGUAGE, TRANSLATOR, path_to_resource
 from ui import DiskVisualizerApp, DiskIndexingApp
-import ui.loader_animation as loader_animation
+import ui.minimal_loader_app as minimal_loader_app
 
 
 def check_language():
     if not SETTINGS['is_first_run']:
         return
     if LANGUAGE != SETTINGS['language']['current']:
-        threading.Thread(target=loader_animation.run_app, daemon=True).start()
+        threading.Thread(target=minimal_loader_app.run_app, daemon=True).start()
         if update_language(LANGUAGE):
             SETTINGS['language']['current'] = LANGUAGE
             SETTINGS['is_first_run'] = False
             SETTINGS.save()
             TRANSLATOR.change_language(LANGUAGE)
-        loader_animation.close = True
+        minimal_loader_app.close = True
+
 
 def main() -> None:
     check_language()
