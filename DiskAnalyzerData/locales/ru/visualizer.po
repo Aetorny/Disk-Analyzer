@@ -91,3 +91,9 @@ msgstr "Нет"
 
 msgid "Visualize Type:"
 msgstr "Тип визуализатора:"
+
+msgid "Nesting"
+msgstr "По уровню вложенности"
+
+msgid "Columns"
+msgstr "Столбцами"
