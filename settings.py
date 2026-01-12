@@ -58,6 +58,11 @@ class Settings:
         if self.data['version'] != VERSION:
             self._update()
         
+        for key in self.data:
+            if 'current' in self.data[key]:
+                if self.data[key]['current'] not in self.data[key]['available']:
+                    self.data[key]['current'] = self.data[key]['available'][0]
+        
         self.save()
         logging.info('Конфигурационный файл успешно проверен.')
 
