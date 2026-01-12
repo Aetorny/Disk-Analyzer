@@ -263,6 +263,8 @@ class DiskVisualizerApp(ctk.CTk):
     def on_invert_theme_change(self, value: str):
         """Обработчик изменения инвертирования цветовой схемы"""
         self.is_inverted_theme = True if value == _("Yes") else False
+        if SETTINGS['color_map']['current'] in SETTINGS['color_map']['custom']:
+            return
         self.on_color_map_change(SETTINGS['color_map']['current'])
 
     def on_color_map_change(self, color_map: str):
