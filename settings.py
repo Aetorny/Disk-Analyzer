@@ -56,7 +56,7 @@ class Settings:
             self.data[key] = data[key]
 
         if self.data['version'] != VERSION:
-            self._update_availables()
+            self._update()
         
         self.save()
         logging.info('Конфигурационный файл успешно проверен.')
@@ -91,6 +91,9 @@ class Settings:
                     "autumn",
                     "jet",
                     "turbo"
+                ],
+                'custom': [
+                    'Nesting'
                 ]
             },
             'visualize_type': {
@@ -102,11 +105,13 @@ class Settings:
             }
         }
 
-    def _update_availables(self) -> None:
+    def _update(self) -> None:
         data = self.default_settings
         for key in data:
-            if 'available' in data[key]:
-                self.data[key]['available'] = data[key]['available']
+            if isinstance(data[key], dict):
+                for option in data[key]:
+                    if option == 'current': continue
+                    self.data[key][option] = data[key][option]
 
     def save(self) -> None:
         logging.info('Сохранение конфигурационного файла...')
