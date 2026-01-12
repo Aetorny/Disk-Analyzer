@@ -732,7 +732,10 @@ class DiskVisualizerApp(ctk.CTk):
 
     def open_in_explorer(self):
         if self.selected_item and self.selected_item[4]:
-            os.startfile(self.selected_item[4])
+            path = self.selected_item[4]
+            if self.selected_item[8]:
+                path = os.path.dirname(path)
+            os.startfile(path)
 
     def copy_path(self):
         if self.selected_item and self.selected_item[4]:
