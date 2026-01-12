@@ -17,7 +17,7 @@ from ui import SettingsWindow
 _ = TRANSLATOR.gettext('disk_indexing')
 
 
-ctk.set_appearance_mode(SETTINGS['appearence_mode']['current'])
+ctk.set_appearance_mode(SETTINGS['theme']['current'])
 ctk.set_default_color_theme('blue')
 
 
@@ -161,8 +161,8 @@ class DiskIndexingApp(ctk.CTk):
             },
             {
                 "label": _("Display mode:"),
-                "options": SETTINGS['appearence_mode']['available'],
-                "current": SETTINGS['appearence_mode']['current'],
+                "options": SETTINGS['theme']['available'],
+                "current": SETTINGS['theme']['current'],
                 "callback": self.on_appearance_changed
             },
         ]
@@ -186,7 +186,7 @@ class DiskIndexingApp(ctk.CTk):
 
     def on_appearance_changed(self, appearance: str):
         """Обработчик изменения режима отображения"""
-        SETTINGS['appearence_mode']['current'] = appearance
+        SETTINGS['theme']['current'] = appearance
         SETTINGS.save()
         ctk.set_appearance_mode(appearance)
         logging.info(f"Режим отображения изменен на: {appearance}")

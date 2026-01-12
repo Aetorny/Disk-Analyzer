@@ -3,6 +3,7 @@ from .squarify_local import squarify, normalize_sizes
 from .formatting import format_path, format_bytes, format_date_to_time_ago
 from .db_interact import load_all_databases, create_database, delete_database
 from .update_language import update_language
+from .render_pipelines import render_tree_map_pipeline, render_columns_pipeline
 
 
 __all__ = [
@@ -17,4 +18,6 @@ __all__ = [
     "create_database",
     "delete_database",
     "update_language",
+    "render_tree_map_pipeline",
+    "render_columns_pipeline"
 ]

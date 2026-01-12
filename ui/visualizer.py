@@ -1,5 +1,4 @@
 import customtkinter as ctk
-import cairo
 from tkinter import Menu
 from PIL import Image, ImageTk
 
@@ -12,10 +11,9 @@ import compression.zstd
 import time
 from typing import Any
 
-import utils.squarify_local as squarify
 from logic import Database
 from config import DATA_DIR, set_should_run_analyzer, SETTINGS, PLATFORM, TRANSLATOR
-from utils import ColorCache, format_bytes, update_language
+from utils import ColorCache, format_bytes, update_language, render_tree_map_pipeline, render_columns_pipeline
 from ui import LoaderFrame, SettingsWindow
 
 _ = TRANSLATOR.gettext('visualizer')
@@ -24,7 +22,7 @@ _ = TRANSLATOR.gettext('visualizer')
 CULLING_SIZE_PX = 2
 color_cache = ColorCache(SETTINGS['color_map']['current'])
 
-ctk.set_appearance_mode(SETTINGS['appearence_mode']['current'])
+ctk.set_appearance_mode(SETTINGS['theme']['current'])
 ctk.set_default_color_theme('blue')
 
 
@@ -176,15 +174,18 @@ class DiskVisualizerApp(ctk.CTk):
                 "callback": self.on_language_changed
             },
             {
-                "label": _("Display mode:"),
-                "options": SETTINGS['appearence_mode']['available'],
-                "current": SETTINGS['appearence_mode']['current'],
-                "callback": self.on_appearance_changed
+                "label": _("Theme:"),
+                "options": SETTINGS['theme']['available'],
+                "current": SETTINGS['theme']['current'],
+                "callback": self.on_theme_changed
             },
             {
                 "label": _("Color scheme:"),
                 "options": SETTINGS['color_map']['available'],
                 "current": SETTINGS['color_map']['current'],
+                'display_map': {
+                    en: _(en) for en in SETTINGS['color_map']['available']
+                },
                 "callback": self.on_color_map_change
             },
             {
@@ -192,6 +193,12 @@ class DiskVisualizerApp(ctk.CTk):
                 "options": [_("Yes"), _("No")],
                 "current": _("Yes") if self.is_inverted_theme else _("No"),
                 "callback": self.on_invert_theme_change
+            },
+            {
+                'label': _("Visualize Type:"),
+                'options': list(map(_, SETTINGS['visualize_type']['available'])),
+                'current': _(SETTINGS['visualize_type']['current']),
+                'callback': self.on_visualize_type
             }
         ]
 
@@ -201,7 +208,13 @@ class DiskVisualizerApp(ctk.CTk):
             gettext=TRANSLATOR.gettext('visualizer'),
             icon_path=self.icon_path
         )
-        
+
+    def on_visualize_type(self, visualize_type: str):
+        SETTINGS['visualize_type']['current'] = visualize_type
+        SETTINGS.save()
+        logging.info(f"Тип визуализации изменен на: {visualize_type}")
+        self.after(0, self.trigger_render)
+
     def on_update_language(self):
         if SETTINGS['language']['current'] == 'en':
             return
@@ -212,12 +225,12 @@ class DiskVisualizerApp(ctk.CTk):
             "You must restart the application\nto apply the changes"
         ])
 
-    def on_appearance_changed(self, appearance: str):
+    def on_theme_changed(self, theme: str):
         """Обработчик изменения режима отображения"""
-        SETTINGS['appearence_mode']['current'] = appearance
+        SETTINGS['theme']['current'] = theme
         SETTINGS.save()
-        ctk.set_appearance_mode(appearance)
-        logging.info(f"Режим отображения изменен на: {appearance}")
+        ctk.set_appearance_mode(theme)
+        logging.info(f"Режим отображения изменен на: {theme}")
 
     def on_restart(self):
         set_should_run_analyzer(True)
@@ -355,7 +368,6 @@ class DiskVisualizerApp(ctk.CTk):
                 self.after(0, self.trigger_render)
             self._search_lock.release()
             self._search_workers -= 1
-            self.search_loader.stop()
 
     def on_search(self, *_args: Any) -> None:
         search_str = self.search_var.get().strip().lower()
@@ -456,186 +468,25 @@ class DiskVisualizerApp(ctk.CTk):
         '''
         if not self._render_lock.acquire(blocking=False):
             return
+
+        pipeline = render_tree_map_pipeline if SETTINGS['visualize_type']['current'] == 'TreeMap' \
+            else render_columns_pipeline
+
         try:
-            # Список (y1, y2, x1, x2, r, g, b)
-            rects: list[tuple[float, float, float, float, float, float, float]] = []
-            # Список (x, y, text, font, color, anchor)
-            texts: list[tuple[float, float, str, str]] = []
-            # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
-            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
-            logging.info('Начало расчета макета')
-            with self._data_lock:
-                size = self.raw_data[self.current_root]['s']
-            execution_time = self._calculate_layout(
-                rects, texts, hit_map,
+            image, hit_map = pipeline(
+                width, height,
                 self.current_root,
-                size, 0, 0, width, height, 0
+                self.raw_data,
+                color_cache,
+                self.global_max_log,
+                self.search_data,
+                True if SETTINGS['color_map']['current'] == 'Nesting' else False,
+                self._data_lock
             )
-            logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
-            logging.info(f'Время расчёта макета: {execution_time} секунд')
-            
-            stride = width * 4
-            data = bytearray(stride * height)
-            surface = cairo.ImageSurface.create_for_data(
-                data, 
-                cairo.FORMAT_ARGB32, 
-                width, 
-                height, 
-                stride
-            )
-            ctx = cairo.Context(surface)
-
-            bg_val = 32 / 255.0
-            ctx.set_source_rgb(bg_val, bg_val, bg_val)
-            ctx.paint() #
-            for y1, y2, x1, x2, r, g, b in rects:
-                w = x2 - x1
-                h = y2 - y1
-                
-                # --- Черная подложка (Outline) ---
-                ctx.set_source_rgb(0, 0, 0)
-                ctx.rectangle(x1, y1, w, h)
-                ctx.fill()
-                
-                # --- Цветная середина ---
-                if w > 2 and h > 2:
-                    # Cairo принимает цвета 0.0-1.0
-                    # Cairo ARGB пишет в памяти B-G-R-A (на little-endian).
-                    ctx.set_source_rgb(b/255.0, g/255.0, r/255.0)
-                    
-                    # Рисуем внутренний квадрат (+1 пиксель отступа)
-                    ctx.rectangle(x1 + 1, y1 + 1, w - 2, h - 2)
-                    ctx.fill()
-                else:
-                    # Если слишком мелкий, просто красим
-                    ctx.set_source_rgb(b/255.0, g/255.0, r/255.0)
-                    ctx.rectangle(x1, y1, w, h)
-                    ctx.fill()
-
-            ctx.select_font_face("Arial", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-            ctx.set_font_size(14) 
-
-            for tx, ty, ttext, tcol in texts:
-                if tcol == 'black':
-                    ctx.set_source_rgb(0, 0, 0)
-                else:
-                    ctx.set_source_rgb(1, 1, 1)
-                ctx.move_to(tx, ty + 14)
-                ctx.show_text(ttext)
-            surface.flush()
-
-            image = Image.frombuffer("RGBA", (width, height), data, "raw", "RGBA", 0, 1)
             self.after(0, lambda: self._update_canvas(image, hit_map))
         finally:
             self._render_lock.release()
             logging.info('Пайплайн отрисовки завершён')
-
-    def _calculate_layout(
-            self,
-            rects: list[tuple[float, float, float, float, float, float, float]],
-            texts: list[tuple[float, float, str, str]],
-            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
-            path_str: str,
-            size: float, x: float, y: float, dx: float, dy: float,
-            level: int) -> float:
-        """
-        Итеративно считает координаты (через стек). Не рисует, а заполняет списки rects и texts.
-        """
-        start_time = time.perf_counter()
-        stack = [(path_str, path_str, size, x, y, dx, dy, level)]
-        while stack:
-            path, name, size, x, y, dx, dy, level = stack.pop()
-
-            if dx < CULLING_SIZE_PX or dy < CULLING_SIZE_PX:
-                continue
-
-            rgb_color = color_cache.get_color_rgb_and_text(size, self.global_max_log)
-            r, g, b = rgb_color
-            brightness = (r * 299 + g * 587 + b * 114) / 1000
-            text_color = "black" if brightness > 128 else "white"
-            
-            ix, iy, idx, idy = int(x), int(y), int(dx), int(dy)
-            rects.append((iy, iy+idy, ix, ix+idx, r, g, b)) 
-            
-            hit_map.append((x, y, x+dx, y+dy, path, name, size, False, False))
-
-            # Текст (Имя сверху)
-            header_h = 0
-            has_header_space = dx > 45 and dy > 40
-            if has_header_space:
-                header_h = 20
-                max_chars = int(dx / 10)
-                disp_name = name if len(name) <= max_chars else name[:max_chars] + "..."
-                texts.append((x+4, y+3, disp_name, text_color))
-
-            pad = 2
-            norm_w, norm_h = dx - 2*pad, dy - header_h - 2*pad
-            if norm_w < 4 or norm_h < 4:
-                continue
-            
-            with self._data_lock:
-                data = self.raw_data[path]
-
-            subfolders = pickle.loads(compression.zstd.decompress(data['subfolders']))
-            if self.search_data:
-                subfolders = [x for x in subfolders if x['p'] in self.search_data]
-
-            files = []
-            if level > 0 and not self.search_data:
-                sizes: list[float] = [x['s'] for x in subfolders]
-            else:
-                files = pickle.loads(compression.zstd.decompress(data['files']))
-                if self.search_data:
-                    files = [x for x in files if x['p'] in self.search_data]
-                sizes: list[float] = [x['s'] for x in subfolders + files]
-                sizes.sort(reverse=True)
-
-            norm = squarify.normalize_sizes(sizes, norm_w, norm_h, sum(sizes)) # pyright: ignore[reportUnknownMemberType]
-            subfolders_norm, files_norm = norm[:len(subfolders)], norm[len(subfolders):]
-            while 0.0 in subfolders_norm:
-                subfolders_norm.remove(0.0)
-            while 0.0 in files_norm:
-                files_norm.remove(0.0)
-            subfolders_len = len(subfolders_norm)
-            rects_sq: list[dict[str, Any]] = squarify.squarify(subfolders_norm+files_norm, x + pad, y + header_h + pad, norm_w, norm_h) # type: ignore
-            subfolders_rects, files_rects = rects_sq[:subfolders_len], rects_sq[subfolders_len:]
-
-            for rect, folder in zip(subfolders_rects, subfolders):
-                rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
-
-                stack.append((
-                    folder['p'], 
-                    folder['n'],
-                    folder['s'], 
-                    rx, ry, rdx, rdy, 
-                    level + 1
-                ))
-
-            if level > 0 and not self.search_data:
-                continue
-            
-            for rect, file in zip(files_rects, files):
-                rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
-                
-                if rdx > CULLING_SIZE_PX and rdy > CULLING_SIZE_PX:
-                    f_rgb = color_cache.get_color_rgb_and_text(file['s'], self.global_max_log)
-                    r, g, b = f_rgb
-                    brightness = (r * 299 + g * 587 + b * 114) / 1000
-                    text_color = "black" if brightness > 128 else "white"
-                    rix, riy, ridx, ridy = int(rx), int(ry), int(rdx), int(rdy)
-                    
-                    rects.append((riy, riy+ridy, rix, rix+ridx, r, g, b))
-                    
-                    if rdx > 40 and rdy > 30:
-                        max_chars = int(rdx / 10)
-                        name = file['n']
-                        dname = name if len(name) <= max_chars else name[:max_chars] + "..."
-
-                        texts.append((rx+4, ry+3, dname, text_color))
-                    
-                    hit_map.append((rx, ry, rx+rdx, ry+rdy, file['p'], name, file['s'], False, True))
-        end_time = time.perf_counter()
-        return end_time - start_time
 
     def _update_canvas(self, pil_image: Image.Image, hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]]):
         self.hit_map = hit_map
