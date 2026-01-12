@@ -35,8 +35,8 @@ msgstr "Справка"
 msgid "About"
 msgstr "О программе"
 
-msgid "Display mode:"
-msgstr "Режим отображения:"
+msgid "Theme:"
+msgstr "Тема:"
 
 msgid "Color scheme:"
 msgstr "Цветовая схема:"
@@ -88,3 +88,6 @@ msgstr "Да"
 
 msgid "No"
 msgstr "Нет"
+
+msgid "Visualize Type:"
+msgstr "Тип визуализатора:"
