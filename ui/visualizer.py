@@ -16,6 +16,7 @@ import utils.squarify_local as squarify
 from logic import Database
 from config import DATA_DIR, set_should_run_analyzer, SETTINGS, PLATFORM, TRANSLATOR
 from utils import ColorCache, format_bytes, update_language
+from ui import LoaderFrame
 
 
 _ = TRANSLATOR.gettext('visualizer')
@@ -122,6 +123,8 @@ class DiskVisualizerApp(ctk.CTk):
     def toggle_search_bar(self, *_args: Any) -> None:
         self.is_search_bar_active = not self.is_search_bar_active
         if self.is_search_bar_active:
+            self.search_loader = LoaderFrame(self.top_frame, 30, 30)
+            self.search_loader.pack(side="right") # pyright: ignore[reportUnknownMemberType]
             self.search_entry = ctk.CTkEntry(
                 self.top_frame,
                 textvariable=self.search_var,
@@ -136,6 +139,7 @@ class DiskVisualizerApp(ctk.CTk):
     def hide_search_bar(self, *_args: Any) -> None:
         if self.search_entry:
             self.search_entry.destroy()
+            self.search_loader.destroy()
             self.is_search_bar_active = False
             self.search_var = ctk.StringVar(value="")
             self.search_var.trace_add("write", self.on_search)
@@ -384,6 +388,7 @@ class DiskVisualizerApp(ctk.CTk):
             return
         self.search_data = set()
         temp_data: set[str] = set()
+        self.search_loader.start()
         try:
             search_str = self.search_var.get().strip().lower()
             for path in self.raw_data:
@@ -411,6 +416,7 @@ class DiskVisualizerApp(ctk.CTk):
                 self.after(0, self.trigger_render)
             self._search_lock.release()
             self._search_workers -= 1
+            self.search_loader.stop()
 
     def on_search(self, *_args: Any) -> None:
         search_str = self.search_var.get().strip().lower()
