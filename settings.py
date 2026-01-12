@@ -3,8 +3,10 @@ import json
 import logging
 from typing import Any
 
+VERSION = '1.7.4'
 
 REQUIRED_SETTINGS = [
+    'version',
     'is_first_run',
     'language',
     'appearence_mode',
@@ -37,9 +39,13 @@ class Settings:
                 self._generate_default_settings()
                 return
 
+        if self.data['version'] != VERSION:
+            self.data['is_first_run'] = True
+
     def _generate_default_settings(self) -> None:
         logging.info('Создание стандартного конфигурационного файла...')
         self.data = {
+            'version': VERSION,
             'is_first_run': True,
             "language": {
                 "current": "en",
