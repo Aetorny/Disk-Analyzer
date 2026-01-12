@@ -6,7 +6,7 @@ from typing import Any
 
 
 class LoaderFrame(ctk.CTkFrame):
-    def __init__(self, master: ctk.CTk, width: int, height: int, **kwargs: dict[Any, Any]):
+    def __init__(self, master: ctk.CTk | ctk.CTkFrame, width: int, height: int, **kwargs: dict[Any, Any]):
         super().__init__(master, width=width, height=height, **kwargs) # type: ignore
         
         self.target_color = self._get_canvas_color(kwargs.get("fg_color", "transparent")) # type: ignore
@@ -56,16 +56,30 @@ class LoaderFrame(ctk.CTkFrame):
         if w < 1: w = float(self.cget("width")) # type: ignore
         if h < 1: h = float(self.cget("height")) # type: ignore
 
+        if w < 5 or h < 5:
+            self.animation_id = self.after(50, self.animate)
+            return
+
         self.canvas.delete("all")
         
-        padding = 30 
+        size = min(w, h)
+        
+        line_width = max(2, size / 10)
+        
+        padding = line_width + 2 
+
+        x_offset = (w - size) / 2
+        y_offset = (h - size) / 2
         
         self.canvas.create_arc( # pyright: ignore[reportUnknownMemberType]
-            padding, padding, w - padding, h - padding,
+            x_offset + padding,          # x1
+            y_offset + padding,          # y1
+            x_offset + size - padding,   # x2
+            y_offset + size - padding,   # y2
             start=self.angle,
             extent=280,
             style="arc",
-            width=12, 
+            width=line_width,
             outline="#3B8ED0" 
         )
 
