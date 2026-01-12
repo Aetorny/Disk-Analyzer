@@ -82,3 +82,9 @@ msgstr "Обновить"
 
 msgid "Restart"
 msgstr "Перезапустить"
+
+msgid "Yes"
+msgstr "Да"
+
+msgid "No"
+msgstr "Нет"
