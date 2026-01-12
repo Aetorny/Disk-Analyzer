@@ -19,7 +19,6 @@ from ui import LoaderFrame, SettingsWindow
 _ = TRANSLATOR.gettext('visualizer')
 
 
-CULLING_SIZE_PX = 2
 color_cache = ColorCache(SETTINGS['color_map']['current'])
 
 ctk.set_appearance_mode(SETTINGS['theme']['current'])
