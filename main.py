@@ -10,14 +10,13 @@ import ui.minimal_loader_app as minimal_loader_app
 def check_language():
     if not SETTINGS['is_first_run']:
         return
-    if LANGUAGE != SETTINGS['language']['current']:
-        threading.Thread(target=minimal_loader_app.run_app, daemon=True).start()
-        if update_language(LANGUAGE):
-            SETTINGS['language']['current'] = LANGUAGE
-            SETTINGS['is_first_run'] = False
-            SETTINGS.save()
-            TRANSLATOR.change_language(LANGUAGE)
-        minimal_loader_app.close = True
+    threading.Thread(target=minimal_loader_app.run_app, daemon=True).start()
+    if update_language(LANGUAGE):
+        SETTINGS['language']['current'] = LANGUAGE
+        SETTINGS['is_first_run'] = False
+        SETTINGS.save()
+        TRANSLATOR.change_language(LANGUAGE)
+    minimal_loader_app.close = True
 
 
 def main() -> None:
