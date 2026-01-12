@@ -3,14 +3,15 @@ import json
 import logging
 from typing import Any
 
-VERSION = '1.7.4'
+VERSION = '1.8'
 
 REQUIRED_SETTINGS = [
     'version',
     'is_first_run',
     'language',
-    'appearence_mode',
-    'color_map'
+    'theme',
+    'color_map',
+    'visualize_type'
 ]
 
 
@@ -27,37 +28,56 @@ class Settings:
                 self._check_data()
             except Exception as e:
                 logging.error(f'Ошибка при загрузке конфигурационного файла: {e}')
-                return self._generate_default_settings()
+                self.data = self.default_settings
+                self.save()
 
             logging.info(f'Конфигурационный файл успешно загружен.')
         else:
-            self._generate_default_settings()
+            self.data = self.default_settings
+            self.save()
 
     def _check_data(self) -> None:
+        logging.info('Проверка конфигурационного файла...')
+        keys_to_generate: list[str] = []
         for setting in REQUIRED_SETTINGS:
             if setting not in self.data:
-                self._generate_default_settings()
-                return
+                keys_to_generate.append(setting)
+        
+        if len(self.data)+len(keys_to_generate) > len(REQUIRED_SETTINGS):
+            to_delete: list[str] = []
+            for key in self.data:
+                if key not in REQUIRED_SETTINGS:
+                    to_delete.append(key)
+            for key in to_delete:
+                del self.data[key]
+
+        data = self.default_settings
+        for key in keys_to_generate:
+            self.data[key] = data[key]
 
         if self.data['version'] != VERSION:
-            self.data['is_first_run'] = True
+            self._update_availables()
+        
+        self.save()
+        logging.info('Конфигурационный файл успешно проверен.')
 
-    def _generate_default_settings(self) -> None:
-        logging.info('Создание стандартного конфигурационного файла...')
-        self.data = {
+    @property
+    def default_settings(self) -> dict[str, Any]:
+        return {
             'version': VERSION,
             'is_first_run': True,
             "language": {
                 "current": "en",
                 "available": ["en", "ru"]
             },
-            'appearence_mode': {
+            'theme': {
                 'current': 'dark',
                 'available': ['light', 'dark']
             },
             'color_map': {
                 'current': 'turbo',
                 'available': [
+                    "Nesting",
                     "Blues",
                     "BuPu",
                     "CMRmap",
@@ -72,10 +92,21 @@ class Settings:
                     "jet",
                     "turbo"
                 ]
+            },
+            'visualize_type': {
+                'current': 'TreeMap',
+                'available': [
+                    'TreeMap',
+                    'Columns'
+                ]
             }
         }
-        self.save()
-        logging.info('Стандартный конфигурационный файл создан.')
+
+    def _update_availables(self) -> None:
+        data = self.default_settings
+        for key in data:
+            if 'available' in data[key]:
+                self.data[key]['available'] = data[key]['available']
 
     def save(self) -> None:
         logging.info('Сохранение конфигурационного файла...')
