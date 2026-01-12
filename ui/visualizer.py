@@ -41,7 +41,6 @@ class DiskVisualizerApp(ctk.CTk):
         # Создаем меню
         self.create_menu()
 
-        self.layout_cache: dict[tuple[Any, Any, Any], Any] = {}
         self.raw_data: Database
         self.databases = databases
         self.icon_path = icon_path
@@ -58,6 +57,7 @@ class DiskVisualizerApp(ctk.CTk):
         self._resize_job = None
         self._render_lock = threading.Lock()
         self._search_lock = threading.Lock()
+        self._data_lock = threading.Lock()
         self._search_workers = 0
         
         # GUI
@@ -140,7 +140,7 @@ class DiskVisualizerApp(ctk.CTk):
             self.search_var = ctk.StringVar(value="")
             self.search_var.trace_add("write", self.on_search)
         self.search_data = set()
-        self.after(100, self.trigger_render)
+        threading.Thread(target=self._cancel_search_thread, daemon=True).start()
 
     def create_menu(self):
         """Создает меню приложения"""
@@ -366,41 +366,57 @@ class DiskVisualizerApp(ctk.CTk):
         )
         close_button.pack(fill="x", padx=20, pady=(0, 20)) # pyright: ignore[reportUnknownMemberType]
 
+    def _cancel_search_thread(self):
+        self._search_workers += 100
+        while self._search_lock.locked() and self._search_workers > 1:
+            time.sleep(0.1)
+        self.search_data = set()
+        self._search_workers = 0
+        self.after(0, self.trigger_render)
+
     def _on_search_thread(self) -> None:
         if self._search_lock.locked():
             time.sleep(0.1)
+        if self._search_workers > 1:
+            self._search_workers -= 1
+            return
         if not self._search_lock.acquire(blocking=False):
             return
+        self.search_data = set()
+        temp_data: set[str] = set()
         try:
             search_str = self.search_var.get().strip().lower()
-            self.search_data = set()
             for path in self.raw_data:
                 if path.startswith('__'): continue
-                for folder in pickle.loads(compression.zstd.decompress(self.raw_data[path]['subfolders'])):
+                with self._data_lock:
+                    data = self.raw_data[path]
+                for folder in pickle.loads(compression.zstd.decompress(data['subfolders'])):
                     if self._search_workers > 1: return
                     if search_str in folder['n'].lower():
                         current = folder['p']
                         while current != self.scan_root_path:
-                            self.search_data.add(current)
+                            temp_data.add(current)
                             current = os.path.dirname(current)
-                for file in pickle.loads(compression.zstd.decompress(self.raw_data[path]['files'])):
+                for file in pickle.loads(compression.zstd.decompress(data['files'])):
                     if self._search_workers > 1: return
                     if search_str in file['n'].lower():
                         current = file['p']
                         while current != self.scan_root_path:
-                            self.search_data.add(current)
+                            temp_data.add(current)
                             current = os.path.dirname(current)
-            self.search_data.add(self.scan_root_path)
+            temp_data.add(self.scan_root_path)
         finally:
+            if self._search_workers == 1:
+                self.search_data = temp_data
+                self.after(0, self.trigger_render)
             self._search_lock.release()
             self._search_workers -= 1
-            self.after(0, self.trigger_render)
 
     def on_search(self, *_args: Any) -> None:
         search_str = self.search_var.get().strip().lower()
         if search_str == '':
             self.search_data = set()
-            self.after(100, self.trigger_render)
+            threading.Thread(target=self._cancel_search_thread, daemon=True).start()
             return
         self._search_workers += 1
         threading.Thread(target=self._on_search_thread, daemon=True).start()
@@ -498,27 +514,22 @@ class DiskVisualizerApp(ctk.CTk):
         if not self._render_lock.acquire(blocking=False):
             return
         try:
-            if cache_key in self.layout_cache and not self.search_data:
-                logging.info(f'Макет из кэша: {cache_key}')
-                rects, texts, hit_map = self.layout_cache[cache_key]
-            else:
-                # Список (y1, y2, x1, x2, r, g, b)
-                rects: list[tuple[float, float, float, float, float, float, float]] = []
-                # Список (x, y, text, font, color, anchor)
-                texts: list[tuple[float, float, str, str]] = []
-                # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
-                hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
-                logging.info('Начало расчета макета')
-                execution_time = self._calculate_layout(
-                    rects, texts, hit_map,
-                    self.current_root,
-                    self.raw_data[self.current_root]['s'], 0, 0, width, height, 0
-                )
-                logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
-                logging.info(f'Время расчёта макета: {execution_time} секунд')
-                if execution_time >= 0.1:
-                    logging.info(f'Макет сохранён в кэш: {cache_key}')
-                    self.layout_cache[cache_key] = (rects, texts, hit_map)
+            # Список (y1, y2, x1, x2, r, g, b)
+            rects: list[tuple[float, float, float, float, float, float, float]] = []
+            # Список (x, y, text, font, color, anchor)
+            texts: list[tuple[float, float, str, str]] = []
+            # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
+            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
+            logging.info('Начало расчета макета')
+            with self._data_lock:
+                size = self.raw_data[self.current_root]['s']
+            execution_time = self._calculate_layout(
+                rects, texts, hit_map,
+                self.current_root,
+                size, 0, 0, width, height, 0
+            )
+            logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
+            logging.info(f'Время расчёта макета: {execution_time} секунд')
             
             stride = width * 4
             data = bytearray(stride * height)
@@ -618,8 +629,11 @@ class DiskVisualizerApp(ctk.CTk):
             norm_w, norm_h = dx - 2*pad, dy - header_h - 2*pad
             if norm_w < 4 or norm_h < 4:
                 continue
+            
+            with self._data_lock:
+                data = self.raw_data[path]
 
-            subfolders = pickle.loads(compression.zstd.decompress(self.raw_data[path]['subfolders']))
+            subfolders = pickle.loads(compression.zstd.decompress(data['subfolders']))
             if self.search_data:
                 subfolders = [x for x in subfolders if x['p'] in self.search_data]
 
@@ -627,7 +641,7 @@ class DiskVisualizerApp(ctk.CTk):
             if level > 0 and not self.search_data:
                 sizes: list[float] = [x['s'] for x in subfolders]
             else:
-                files = pickle.loads(compression.zstd.decompress(self.raw_data[path]['files']))
+                files = pickle.loads(compression.zstd.decompress(data['files']))
                 if self.search_data:
                     files = [x for x in files if x['p'] in self.search_data]
                 sizes: list[float] = [x['s'] for x in subfolders + files]
@@ -704,7 +718,8 @@ class DiskVisualizerApp(ctk.CTk):
 
         if found:
             name, size_str = found[5], format_bytes(found[6])
-            current_root_size = self.raw_data[self.current_root]['s'] or 1
+            with self._data_lock:
+                current_root_size = self.raw_data[self.current_root]['s'] or 1
             pct = (found[6] / current_root_size * 100)
             is_file = found[8]
             type_label = _("File") if is_file else _("Folder")
