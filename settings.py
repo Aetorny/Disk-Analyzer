@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Any
 
-VERSION = '1.8'
+VERSION = '1.8.1'
 
 REQUIRED_SETTINGS = [
     'version',
@@ -59,7 +59,7 @@ class Settings:
             self._update()
         
         for key in self.data:
-            if 'current' in self.data[key]:
+            if isinstance(self.data[key], dict) and 'current' in self.data[key]:
                 if self.data[key]['current'] not in self.data[key]['available']:
                     self.data[key]['current'] = self.data[key]['available'][0]
         
