@@ -120,7 +120,10 @@ def render_pipeline(
                 rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
                 
                 if rdx > CULLING_SIZE_PX and rdy > CULLING_SIZE_PX:
-                    f_rgb = color_cache.get_color_rgb_and_text(file['s'], global_max_log)
+                    if is_level_color_map:
+                        f_rgb = color_cache.get_rgb_by_number(level)
+                    else:
+                        f_rgb = color_cache.get_color_rgb_and_text(file['s'], global_max_log)
                     r, g, b = f_rgb
                     brightness = (r * 299 + g * 587 + b * 114) / 1000
                     text_color = "black" if brightness > 128 else "white"
