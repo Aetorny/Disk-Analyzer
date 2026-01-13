@@ -488,7 +488,7 @@ class DiskVisualizerApp(ctk.CTk):
             self._render_lock.release()
             logging.info('Пайплайн отрисовки завершён')
 
-    def _update_canvas(self, pil_image: Image.Image, hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]]):
+    def _update_canvas(self, pil_image: Image.Image, hit_map: list[tuple[float, float, float, float, str, str, float, bool]]):
         self.hit_map = hit_map
         self.current_tk_image = ImageTk.PhotoImage(pil_image)
         self.highlight_rect_id = None
@@ -515,7 +515,7 @@ class DiskVisualizerApp(ctk.CTk):
             with self._data_lock:
                 current_root_size = self.raw_data[self.current_root]['s'] or 1
             pct = (found[6] / current_root_size * 100)
-            is_file = found[8]
+            is_file = found[7]
             type_label = _("File") if is_file else _("Folder")
             if found[7]: type_label = _("Group")
             
@@ -562,8 +562,8 @@ class DiskVisualizerApp(ctk.CTk):
         for i in range(len(self.hit_map) - 1, -1, -1):
             item = self.hit_map[i]
             if item[0] <= mx <= item[2] and item[1] <= my <= item[3]:
-                path, is_dummy, is_file = item[4], item[7], item[8]
-                if path and not is_dummy and not is_file and path in self.raw_data:
+                path, is_file = item[4], item[7]
+                if not is_file and path in self.raw_data:
                     self.change_directory(path)
                 return
 
@@ -582,7 +582,7 @@ class DiskVisualizerApp(ctk.CTk):
     def open_in_explorer(self):
         if self.selected_item and self.selected_item[4]:
             path = self.selected_item[4]
-            if self.selected_item[8]:
+            if self.selected_item[7]:
                 path = os.path.dirname(path)
             os.startfile(path)
 

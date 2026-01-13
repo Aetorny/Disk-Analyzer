@@ -26,14 +26,14 @@ def render_pipeline(
         search_data: set[str],
         is_level_color_map: bool,
         data_lock: threading.Lock
-    ) -> tuple[Image.Image, list[tuple[float, float, float, float, str, str, float, bool, bool]]]:
+    ) -> tuple[Image.Image, list[tuple[float, float, float, float, str, str, float, bool]]]:
     '''
     Пайплайн отрисовки в виде TreeMap.
     '''
     def _calculate_tree_map_layout(
             rects: list[tuple[int, int, int, int, int, int, int]],
             texts: list[tuple[float, float, str, str]],
-            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
+            hit_map: list[tuple[float, float, float, float, str, str, float, bool]],
             path_str: str,
             size: float, x: float, y: float, dx: float, dy: float,
             level: int) -> float:
@@ -59,7 +59,7 @@ def render_pipeline(
             ix, iy, idx, idy = int(x), int(y), int(dx), int(dy)
             rects.append((iy, iy+idy, ix, ix+idx, r, g, b)) 
             
-            hit_map.append((x, y, x+dx, y+dy, path, name, size, False, False))
+            hit_map.append((x, y, x+dx, y+dy, path, name, size, False))
 
             # Текст (Имя сверху)
             header_h = 0
@@ -135,14 +135,14 @@ def render_pipeline(
 
                         texts.append((rx+4, ry+3, dname, text_color))
                     
-                    hit_map.append((rx, ry, rx+rdx, ry+rdy, file['p'], name, file['s'], False, True))
+                    hit_map.append((rx, ry, rx+rdx, ry+rdy, file['p'], name, file['s'], True))
         end_time = time.perf_counter()
         return end_time - start_time
 
     def _calculate_columns_layout(
             rects: list[tuple[int, int, int, int, int, int, int]],
             texts: list[tuple[float, float, str, str]],
-            hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
+            hit_map: list[tuple[float, float, float, float, str, str, float, bool]],
             path_str: str,
             size: float, x: float, y: float, dx: float, dy: float,
             level: int
@@ -179,11 +179,11 @@ def render_pipeline(
 
             with data_lock:
                 if curr_path not in database:
-                    hit_map.append((cx, cy, cx+cdx, cy+cdy, curr_path, curr_name, curr_size, False, True))
+                    hit_map.append((cx, cy, cx+cdx, cy+cdy, curr_path, curr_name, curr_size, True))
                     continue
                 
                 node_data = database[curr_path]
-                hit_map.append((cx, cy, cx+cdx, cy+cdy, curr_path, curr_name, curr_size, False, False))
+                hit_map.append((cx, cy, cx+cdx, cy+cdy, curr_path, curr_name, curr_size, False))
 
             child_area_h = cdy - header_h
             if child_area_h < 2.0:
@@ -270,7 +270,7 @@ def render_pipeline(
                             file_draw_x, file_y_cursor, 
                             file_draw_x + file_draw_w, file_y_cursor + file_h, 
                             file['p'], file['n'], file['s'], 
-                            False, True
+                            True
                         ))
                         
                         if file_h > 14 and file_draw_w > 40:
@@ -293,7 +293,7 @@ def render_pipeline(
     # Список (x, y, text, font, color, anchor)
     texts: list[tuple[float, float, str, str]] = []
     # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
-    hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
+    hit_map: list[tuple[float, float, float, float, str, str, float, bool]] = []
     logging.info(f'Начало расчета макета {pipeline}...')
     with data_lock:
         size = database[current_root]['s']
