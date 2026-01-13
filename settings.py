@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Any
 
-VERSION = '1.8.1'
+VERSION = '1.8.2'
 
 REQUIRED_SETTINGS = [
     'version',

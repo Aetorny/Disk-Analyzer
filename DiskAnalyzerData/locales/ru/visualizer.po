@@ -53,9 +53,6 @@ msgstr "Файл"
 msgid "Folder"
 msgstr "Папка"
 
-msgid "Group"
-msgstr "Группа"
-
 msgid "Program for analyzing and visualizing\ndisk space usage"
 msgstr "Программа для анализа и визуализации\nиспользования дискового пространства"
 

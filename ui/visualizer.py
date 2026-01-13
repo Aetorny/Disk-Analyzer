@@ -517,7 +517,6 @@ class DiskVisualizerApp(ctk.CTk):
             pct = (found[6] / current_root_size * 100)
             is_file = found[7]
             type_label = _("File") if is_file else _("Folder")
-            if found[7]: type_label = _("Group")
             
             x1, y1, x2, y2 = found[0], found[1], found[2], found[3]
             
