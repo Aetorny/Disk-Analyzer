@@ -16,7 +16,8 @@ from utils import ColorCache
 CULLING_SIZE_PX = 2
 
 
-def render_tree_map_pipeline(
+def render_pipeline(
+        pipeline: str,
         width: int, height: int,
         current_root: str,
         database: Database,
@@ -29,7 +30,7 @@ def render_tree_map_pipeline(
     '''
     Пайплайн отрисовки в виде TreeMap.
     '''
-    def _calculate_layout(
+    def _calculate_tree_map_layout(
             rects: list[tuple[float, float, float, float, float, float, float]],
             texts: list[tuple[float, float, str, str]],
             hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
@@ -138,92 +139,7 @@ def render_tree_map_pipeline(
         end_time = time.perf_counter()
         return end_time - start_time
 
-    # Список (y1, y2, x1, x2, r, g, b)
-    rects: list[tuple[float, float, float, float, float, float, float]] = []
-    # Список (x, y, text, font, color, anchor)
-    texts: list[tuple[float, float, str, str]] = []
-    # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
-    hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
-    logging.info('Начало расчета макета')
-    with data_lock:
-        size = database[current_root]['s']
-    execution_time = _calculate_layout(
-        rects, texts, hit_map,
-        current_root,
-        size, 0, 0, width, height, 0
-    )
-    logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
-    logging.info(f'Время расчёта макета: {execution_time} секунд')
-    
-    stride = width * 4
-    data = bytearray(stride * height)
-    surface = cairo.ImageSurface.create_for_data(
-        data, 
-        cairo.FORMAT_ARGB32, 
-        width, 
-        height, 
-        stride
-    )
-    ctx = cairo.Context(surface)
-
-    bg_val = 32 / 255.0
-    ctx.set_source_rgb(bg_val, bg_val, bg_val)
-    ctx.paint() #
-    for y1, y2, x1, x2, r, g, b in rects:
-        w = x2 - x1
-        h = y2 - y1
-        
-        # --- Черная подложка (Outline) ---
-        ctx.set_source_rgb(0, 0, 0)
-        ctx.rectangle(x1, y1, w, h)
-        ctx.fill()
-        
-        # --- Цветная середина ---
-        if w > 2 and h > 2:
-            # Cairo принимает цвета 0.0-1.0
-            # Cairo ARGB пишет в памяти B-G-R-A (на little-endian).
-            ctx.set_source_rgb(b/255.0, g/255.0, r/255.0)
-            
-            # Рисуем внутренний квадрат (+1 пиксель отступа)
-            ctx.rectangle(x1 + 1, y1 + 1, w - 2, h - 2)
-            ctx.fill()
-        else:
-            ctx.set_source_rgb(b/255.0, g/255.0, r/255.0)
-            ctx.rectangle(x1, y1, w, h)
-            ctx.fill()
-
-    ctx.select_font_face("Arial", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-    ctx.set_font_size(14) 
-
-    for tx, ty, ttext, tcol in texts:
-        if tcol == 'black':
-            ctx.set_source_rgb(0, 0, 0)
-        else:
-            ctx.set_source_rgb(1, 1, 1)
-        ctx.move_to(tx, ty + 14)
-        ctx.show_text(ttext)
-    surface.flush()
-
-    image = Image.frombuffer("RGBA", (width, height), data, "raw", "RGBA", 0, 1)
-    return (image, hit_map)
-
-
-def render_columns_pipeline(
-        width: int, height: int,
-        current_root: str,
-        database: Database,
-        color_cache: ColorCache,
-        global_max_log: float,
-        search_data: set[str],
-        is_level_color_map: bool,
-        data_lock: threading.Lock
-    ) -> tuple[Image.Image, list[tuple[float, float, float, float, str, str, float, bool, bool]]]:
-    """
-    Пайплайн отрисовки столбцами:
-    1. Папки занимают левую часть родителя (вертикальные столбцы).
-    2. Файлы занимают правую часть (стопка строк).
-    """
-    def _calculate_layout(
+    def _calculate_columns_layout(
             rects: list[tuple[float, float, float, float, float, float, float]],
             texts: list[tuple[float, float, str, str]],
             hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
@@ -372,46 +288,56 @@ def render_columns_pipeline(
         end_time = time.perf_counter()
         return end_time - start_time
 
+    # Список (y1, y2, x1, x2, r, g, b)
     rects: list[tuple[float, float, float, float, float, float, float]] = []
+    # Список (x, y, text, font, color, anchor)
     texts: list[tuple[float, float, str, str]] = []
+    # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
     hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]] = []
-    
-    logging.info('Начало расчета макета')
-
+    logging.info(f'Начало расчета макета {pipeline}...')
     with data_lock:
         size = database[current_root]['s']
-
-    # Расчет макета
-    execution_time = _calculate_layout(
+    layout = _calculate_tree_map_layout
+    if pipeline == 'Columns':
+        layout = _calculate_columns_layout
+    execution_time = layout(
         rects, texts, hit_map,
         current_root,
-        size,
-        x=0.0, y=0.0,
-        dx=float(width), dy=float(height),
-        level=0
+        size, 0, 0, width, height, 0
     )
-
     logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
     logging.info(f'Время расчёта макета: {execution_time} секунд')
     
     stride = width * 4
     data = bytearray(stride * height)
-    surface = cairo.ImageSurface.create_for_data(data, cairo.FORMAT_ARGB32, width, height, stride)
+    surface = cairo.ImageSurface.create_for_data(
+        data, 
+        cairo.FORMAT_ARGB32, 
+        width, 
+        height, 
+        stride
+    )
     ctx = cairo.Context(surface)
 
     bg_val = 32 / 255.0
     ctx.set_source_rgb(bg_val, bg_val, bg_val)
-    ctx.paint()
-
+    ctx.paint() #
     for y1, y2, x1, x2, r, g, b in rects:
-        w, h = x2 - x1, y2 - y1
+        w = x2 - x1
+        h = y2 - y1
         
+        # --- Черная подложка (Outline) ---
         ctx.set_source_rgb(0, 0, 0)
         ctx.rectangle(x1, y1, w, h)
         ctx.fill()
         
+        # --- Цветная середина ---
         if w > 2 and h > 2:
+            # Cairo принимает цвета 0.0-1.0
+            # Cairo ARGB пишет в памяти B-G-R-A (на little-endian).
             ctx.set_source_rgb(b/255.0, g/255.0, r/255.0)
+            
+            # Рисуем внутренний квадрат (+1 пиксель отступа)
             ctx.rectangle(x1 + 1, y1 + 1, w - 2, h - 2)
             ctx.fill()
         else:
@@ -423,11 +349,13 @@ def render_columns_pipeline(
     ctx.set_font_size(14) 
 
     for tx, ty, ttext, tcol in texts:
-        ctx.set_source_rgb(0, 0, 0) if tcol == 'black' else ctx.set_source_rgb(1, 1, 1)
-        if 0 <= tx < width and 0 <= ty < height:
-            ctx.move_to(tx, ty + 14)
-            ctx.show_text(ttext)
-    
+        if tcol == 'black':
+            ctx.set_source_rgb(0, 0, 0)
+        else:
+            ctx.set_source_rgb(1, 1, 1)
+        ctx.move_to(tx, ty + 14)
+        ctx.show_text(ttext)
     surface.flush()
+
     image = Image.frombuffer("RGBA", (width, height), data, "raw", "RGBA", 0, 1)
     return (image, hit_map)
