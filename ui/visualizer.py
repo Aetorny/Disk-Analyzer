@@ -13,7 +13,7 @@ from typing import Any
 
 from logic import Database
 from config import DATA_DIR, set_should_run_analyzer, SETTINGS, PLATFORM, TRANSLATOR
-from utils import ColorCache, format_bytes, update_language, render_tree_map_pipeline, render_columns_pipeline
+from utils import ColorCache, format_bytes, update_language, render_pipeline
 from ui import LoaderFrame, SettingsWindow
 
 _ = TRANSLATOR.gettext('visualizer')
@@ -195,8 +195,9 @@ class DiskVisualizerApp(ctk.CTk):
             },
             {
                 'label': _("Visualize Type:"),
-                'options': list(map(_, SETTINGS['visualize_type']['available'])),
-                'current': _(SETTINGS['visualize_type']['current']),
+                'options': SETTINGS['visualize_type']['available'],
+                'current': SETTINGS['visualize_type']['current'],
+                'display_map': {en: _(en) for en in SETTINGS['visualize_type']['available']},
                 'callback': self.on_visualize_type
             }
         ]
@@ -470,11 +471,9 @@ class DiskVisualizerApp(ctk.CTk):
         if not self._render_lock.acquire(blocking=False):
             return
 
-        pipeline = render_tree_map_pipeline if SETTINGS['visualize_type']['current'] == 'TreeMap' \
-            else render_columns_pipeline
-
         try:
-            image, hit_map = pipeline(
+            image, hit_map = render_pipeline(
+                SETTINGS['visualize_type']['current'],
                 width, height,
                 self.current_root,
                 self.raw_data,
