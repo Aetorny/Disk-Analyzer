@@ -31,7 +31,7 @@ def render_pipeline(
     Пайплайн отрисовки в виде TreeMap.
     '''
     def _calculate_tree_map_layout(
-            rects: list[tuple[float, float, float, float, float, float, float]],
+            rects: list[tuple[int, int, int, int, int, int, int]],
             texts: list[tuple[float, float, str, str]],
             hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
             path_str: str,
@@ -140,7 +140,7 @@ def render_pipeline(
         return end_time - start_time
 
     def _calculate_columns_layout(
-            rects: list[tuple[float, float, float, float, float, float, float]],
+            rects: list[tuple[int, int, int, int, int, int, int]],
             texts: list[tuple[float, float, str, str]],
             hit_map: list[tuple[float, float, float, float, str, str, float, bool, bool]],
             path_str: str,
@@ -263,7 +263,7 @@ def render_pipeline(
                         rects.append((
                             int(file_y_cursor), int(file_y_cursor + file_h),
                             int(file_draw_x), int(file_draw_x + file_draw_w),
-                            fr, fg, fb
+                            int(fr), int(fg), int(fb)
                         ))
                         
                         hit_map.append((
@@ -289,7 +289,7 @@ def render_pipeline(
         return end_time - start_time
 
     # Список (y1, y2, x1, x2, r, g, b)
-    rects: list[tuple[float, float, float, float, float, float, float]] = []
+    rects: list[tuple[int, int, int, int, int, int, int]] = []
     # Список (x, y, text, font, color, anchor)
     texts: list[tuple[float, float, str, str]] = []
     # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
