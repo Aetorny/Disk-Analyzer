@@ -346,23 +346,23 @@ class DiskVisualizerApp(ctk.CTk):
         try:
             search_str = self.search_var.get().strip().lower()
             for path in self.raw_data:
-                if path.startswith('__'): continue
-                with self._data_lock:
-                    data = self.raw_data[path]
-                for folder in pickle.loads(compression.zstd.decompress(data['subfolders'])):
-                    if self._search_workers > 1: return
-                    if search_str in folder['n'].lower():
-                        current = folder['p']
-                        while current != self.scan_root_path:
-                            temp_data.add(current)
-                            current = os.path.dirname(current)
-                for file in pickle.loads(compression.zstd.decompress(data['files'])):
-                    if self._search_workers > 1: return
-                    if search_str in file['n'].lower():
-                        current = file['p']
-                        while current != self.scan_root_path:
-                            temp_data.add(current)
-                            current = os.path.dirname(current)
+                if not path.startswith('__'):
+                    with self._data_lock:
+                        data = self.raw_data[path]
+                    for folder in pickle.loads(compression.zstd.decompress(data['subfolders'])):
+                        if self._search_workers > 1: return
+                        if search_str in folder['n'].lower():
+                            current = folder['p']
+                            while current != self.scan_root_path:
+                                temp_data.add(current)
+                                current = os.path.dirname(current)
+                    for file in pickle.loads(compression.zstd.decompress(data['files'])):
+                        if self._search_workers > 1: return
+                        if search_str in file['n'].lower():
+                            current = file['p']
+                            while current != self.scan_root_path:
+                                temp_data.add(current)
+                                current = os.path.dirname(current)
             temp_data.add(self.scan_root_path)
         finally:
             if self._search_workers == 1:
@@ -435,12 +435,12 @@ class DiskVisualizerApp(ctk.CTk):
     def update_breadcrumbs(self, path_str: str):
         for widget in self.breadcrumb_frame.winfo_children(): # type: ignore
             widget.destroy() # pyright: ignore[reportUnknownMemberType]
-        clean_path = path_str.lstrip('\\')
+
+        clean_path = path_str.lstrip('\\'+os.sep)
         parts = clean_path.split(os.sep)
-        if path_str.startswith('\\\\'): parts[0] = f"\\\\{parts[0]}"
-        accumulated_path = ""
+
+        accumulated_path = ''
         for i, part in enumerate(parts):
-            if not part: continue
             accumulated_path = (part + os.sep if ":" in part else part) if i == 0 else os.path.join(accumulated_path, part)
             is_valid, is_last = (accumulated_path in self.raw_data), (accumulated_path == self.current_root)
             btn = ctk.CTkButton(

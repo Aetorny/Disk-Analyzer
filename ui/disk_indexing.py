@@ -389,22 +389,17 @@ class DiskIndexingApp(ctk.CTk):
         self.after(100, self.update_progress_loop)
 
     def run_logic(self, paths: list[str]):
-        try:
-            for path in paths:
-                # Сохраняем экземпляр в self, чтобы update_progress_loop мог его видеть
-                self.current_size_finder = SizeFinder(self.databases[path], path)
-                
-                # Обновляем текст в главном потоке (опционально)
-                self.label.configure(text=_("Scanning:") + f"{path}") # pyright: ignore[reportUnknownMemberType]
-
-                self.run_result = self.current_size_finder.run()
+        for path in paths:
+            # Сохраняем экземпляр в self, чтобы update_progress_loop мог его видеть
+            self.current_size_finder = SizeFinder(self.databases[path], path)
             
-            self.is_scanning = False
-            self.after(0, self.on_scan_finished)
-        except Exception as e:
-            self.is_scanning = False
-            logging.error(f"Ошибка при сканировании: {e}")
-            self.after(0, lambda: self.label.configure(text=_("Error"), text_color="red")) # pyright: ignore[reportUnknownMemberType]
+            # Обновляем текст в главном потоке (опционально)
+            self.label.configure(text=_("Scanning:") + f"{path}") # pyright: ignore[reportUnknownMemberType]
+
+            self.run_result = self.current_size_finder.run()
+        
+        self.is_scanning = False
+        self.after(0, self.on_scan_finished)
 
     def abort_scan_and_dont_run_visualizer(self):
         set_should_run_visualizer(False)

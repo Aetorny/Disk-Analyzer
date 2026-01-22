@@ -27,7 +27,7 @@ class Settings:
                     self.data = json.load(f)
                 self._check_data()
             except Exception as e:
-                logging.error(f'Ошибка при загрузке конфигурационного файла: {e}')
+                logging.error(f'Ошибка при загрузке конфигурационного файла: {e}', exc_info=True)
                 self.data = self.default_settings
                 self.save()
 
@@ -115,8 +115,8 @@ class Settings:
         for key in data:
             if isinstance(data[key], dict):
                 for option in data[key]:
-                    if option == 'current': continue
-                    self.data[key][option] = data[key][option]
+                    if option != 'current':
+                        self.data[key][option] = data[key][option]
 
     def save(self) -> None:
         logging.info('Сохранение конфигурационного файла...')
@@ -124,7 +124,7 @@ class Settings:
             with open(self.path, 'w') as f:
                 json.dump(self.data, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            logging.error(f'Ошибка при сохранении конфигурационного файла: {e}')
+            logging.error(f'Ошибка при сохранении конфигурационного файла: {e}', exc_info=True)
             return
 
         logging.info('Конфигурационный файл успешно сохранен.')

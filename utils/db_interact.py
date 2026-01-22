@@ -1,5 +1,6 @@
 import os
 import glob
+import logging
 
 from logic import Database, get_start_directories
 from utils import format_path
@@ -28,8 +29,11 @@ def load_all_databases() -> dict[str, Database]:
             root = db.get('__root__')
             assert isinstance(root, str)
             databases[root] = db
-        except:
+        except Exception as e:
+            logging.error(f'Ошибка при загрузке базы данных {path}: {e}', exc_info=True)
+            db.close()
             delete_database(path)
+            logging.info(f'База данных {path} была удалена.')
         finally:
             db.close()
             

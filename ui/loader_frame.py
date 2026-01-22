@@ -30,7 +30,7 @@ class LoaderFrame(ctk.CTkFrame):
                 parent_color = self.master.cget("fg_color")
                 return self._apply_appearance_mode(parent_color)
             except Exception as e:
-                logging.error("Can't get parent color. Error: " + str(e))
+                logging.error("Can't get parent color. Error: " + str(e), exc_info=True)
                 return self._apply_appearance_mode("#242424")
         else:
             return self._apply_appearance_mode(color_arg)

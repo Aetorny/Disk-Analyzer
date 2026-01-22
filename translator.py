@@ -50,7 +50,7 @@ class Translator:
             logging.info(f'Перевод успешно загружен: {lang}')
 
         except Exception as e:
-            logging.error(f'Ошибка при загрузке перевода: {e}')
+            logging.error(f'Ошибка при загрузке перевода: {e}', exc_info=True)
             self.translates = {
                 file: gettext.NullTranslations() for file in FILES
             }

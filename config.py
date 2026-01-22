@@ -61,7 +61,13 @@ def set_default_values() -> None:
     is_should_run_visualizer = True
     is_should_run_analyzer = False
 
-logging.basicConfig(level=logging.INFO, filename=os.path.join(DATA_DIR, "log.log"), encoding='utf-8', filemode='w', format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    filename=os.path.join(DATA_DIR, "log.log"),
+    encoding='utf-8',
+    filemode='w',
+    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+)
 logging.info(f'Конфигурационный файл успешно запущен. {CURRENT_DIR=}. {DATA_DIR=}. {PLATFORM=}. {IGNORE_PATHS=}. {LANGUAGE=}. {is_should_run_visualizer=}. {is_should_run_analyzer=}.')
 
 SETTINGS = Settings(os.path.join(DATA_DIR, "settings.json"))

@@ -26,5 +26,5 @@ def update_language(lang: str) -> bool:
         return True
 
     except Exception as e:
-        logging.error(f'Ошибка при загрузке перевода: {e}')
+        logging.error(f'Ошибка при загрузке перевода: {e}', exc_info=True)
         return False

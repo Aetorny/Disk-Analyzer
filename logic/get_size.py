@@ -45,6 +45,28 @@ class SizeFinder:
         """Приводит путь к стандартному виду для данной ОС."""
         return os.path.normpath(path)
 
+    def _is_directory_skip(self, entry: os.DirEntry[str]) -> bool:
+        """
+        Проверяет, нужно ли пропустить директорию.
+        Пропускает директории, если выполняется одно из условий:
+        - Это символическая ссылка
+        - Это точка монтирования
+        - Путь находится в списке игнорируемых путей
+        """
+        # Проверка символической ссылки
+        if entry.is_symlink():
+            return True
+        
+        # Проверка точки монтирования
+        if os.path.ismount(entry.path):
+            return True
+
+        # Проверка игнорируемых путей
+        if entry.path.rstrip('/\\') in IGNORE_PATHS:
+            return True
+
+        return False
+
     def _process_directory(self, path: str) -> None:
         """
         Сканирует одну директорию, считает файлы и собирает пути к подпапкам.
@@ -61,39 +83,25 @@ class SizeFinder:
                 for entry in it:
                     if not self.is_running:
                         return
-                    try:
-                        # Обработка директорий
-                        if entry.is_dir(follow_symlinks=False):
-                            if entry.is_symlink() or os.path.ismount(entry.path):
-                                continue
-                            
-                            # Проверка игнорируемых путей
-                            if entry.path.rstrip('/\\') in IGNORE_PATHS:
-                                continue
 
-                            # Важно: нормализуем путь подпапки перед добавлением
-                            child_path = self._normalize(entry.path)
-                            subfolders.append(child_path)
-                            self.queue.put(child_path)
+                    # Обработка директорий
+                    if entry.is_dir(follow_symlinks=False) and not self._is_directory_skip(entry):
+                        normalized_path = self._normalize(entry.path)
+                        subfolders.append(normalized_path)
+                        self.queue.put(normalized_path)
 
-                        # Обработка файлов
-                        elif entry.is_file(follow_symlinks=False):
-                            # st_size дает реальный размер в байтах
-                            file_size = entry.stat(follow_symlinks=False).st_size
-                            current_folder_files_size += file_size
-                            files[entry.name] = file_size
-                    
-                    except PermissionError:
-                        logging.warning(f"Недостаточно прав доступа: {entry.path}")
-                        continue
-                    except Exception as e:
-                        logging.error(f"Ошибка при сканировании {entry.path}: {e}")
-                        continue
-
+                    # Обработка файлов
+                    elif entry.is_file(follow_symlinks=False):
+                        # st_size дает реальный размер в байтах
+                        file_size = entry.stat(follow_symlinks=False).st_size
+                        current_folder_files_size += file_size
+                        files[entry.name] = file_size
         except PermissionError:
-            logging.warning(f"Недостаточно прав доступа: {path}")
+            logging.warning(f'Недостаточно прав для доступа {path}')
+            return
         except Exception as e:
-            logging.error(f"Ошибка при сканировании {path}: {e}")
+            logging.error(f'Ошибка при сканировании {path}: {e}', exc_info=True)
+            return
 
         # Обновляем прогресс-бар
         if current_folder_files_size > 0:
@@ -133,8 +141,7 @@ class SizeFinder:
         Считает полные размеры папок снизу вверх.
         """
         # Сортируем пути по длине строки (от длинных к коротким).
-        # Самые длинные пути — это самые глубокие папки.
-        # Мы гарантированно обработаем детей до их родителей.
+        # Это позволяет гарантированно обработать детей до их родителей.
         sorted_paths = sorted(
             self.folders.keys(), 
             key=len, 
@@ -142,68 +149,68 @@ class SizeFinder:
         )
 
         for path in sorted_paths:
-            if path == '__root__':
-                continue
-            folder_data = self.folders[path]
-            
-            total_size = folder_data["__files_size__"]
-            
-            for subpath in folder_data["subfolders"]:
-                # Ищем подпапку в уже обработанных данных
-                if subpath in self.folders:
-                    total_size += self.folders[subpath]["used_size"]
-                else:
-                    # Если подпапки нет в ключах (например, ошибка доступа при сканировании),
-                    # мы просто игнорируем её размер, так как он равен 0 или неизвестен.
-                    pass
+            if path != '__root__':
+                folder_data = self.folders[path]
+                
+                total_size = folder_data["__files_size__"]
+                
+                for subpath in folder_data["subfolders"]:
+                    if subpath in self.folders:
+                        total_size += self.folders[subpath]["used_size"]
 
-            folder_data["used_size"] = total_size
-            
-            # Удаляем временное поле, чтобы не засорять JSON
-            del folder_data["__files_size__"]
+                folder_data["used_size"] = total_size
+                
+                # Удаляем временное поле, чтобы не засорять JSON
+                del folder_data["__files_size__"]
 
     def _collapse_folders(self) -> None:
         '''
         Объединяет папки, которые содержат только 1 подпапку
         И удаляет из данных пустые папки (папки, весящие 0 байт)
         '''
-        to_change = set(sorted(self.to_change))
+        to_change = set(self.to_change.keys())
         to_remove: set[str] = set()
+        
+        # Определяем какие папки нужно удалить
+        # Изменяем необходимые папки из self.to_change
         for path in self.folders:
-            if path == '__root__':
-                continue
-            if self.folders[path]["used_size"] == 0:
-                to_remove.add(path)
-            i = 0
-            while i < len(self.folders[path]["subfolders"]):
-                subfolder = self.folders[path]["subfolders"][i]
-                if subfolder in to_change:
-                    self.folders[path]["subfolders"].remove(subfolder)
-                    self.folders[path]["subfolders"].append(self.to_change[subfolder])
-                else:
-                    i += 1
+            if path != '__root__':
+                if self.folders[path]["used_size"] == 0:
+                    to_remove.add(path)
+                i = 0
+                while i < len(self.folders[path]["subfolders"]):
+                    subfolder = self.folders[path]["subfolders"][i]
+                    if subfolder in to_change:
+                        self.folders[path]["subfolders"].remove(subfolder)
+                        self.folders[path]["subfolders"].append(self.to_change[subfolder])
+                    else:
+                        i += 1
+
+        # Удаляем папки весящие 0 байт и объединённые папки
         for path in to_change | to_remove:
             if path in self.folders:
                 del self.folders[path]
-        for path in self.folders:
-            if path == '__root__':
-                continue
-            i = 0
-            while i < len(self.folders[path]["subfolders"]):
-                subfolder = self.folders[path]["subfolders"][i]
-                if subfolder in to_remove:
-                    self.folders[path]["subfolders"].remove(subfolder)
-                else:
-                    i += 1
 
-    def _form_final_data(self) -> dict[str, dict[str, Any]]:
+        # Убираем из списков подпапок все удалённые папки
+        for path in self.folders:
+            if path != '__root__':
+                i = 0
+                while i < len(self.folders[path]["subfolders"]):
+                    subfolder = self.folders[path]["subfolders"][i]
+                    if subfolder in to_remove:
+                        self.folders[path]["subfolders"].remove(subfolder)
+                    else:
+                        i += 1
+
+    def _form_final_data(self) -> dict[str, Any]:
         '''
         Предобрабатывает данные в формат, который использует визуализатор
         '''
         data: dict[str, Any] = {}
+        data['__root__'] = self.folders['__root__']['path']
+        del self.folders['__root__']
+
         for path in self.folders.keys():
-            if path == '__root__':
-                continue
             path = self._normalize(path)
             data[path] = {
                 'subfolders': [],
@@ -211,11 +218,12 @@ class SizeFinder:
                 's': self.folders[path]['used_size']
             }
             for subfolder in self.folders[path]['subfolders']:
-                data[path]['subfolders'].append({
-                    'p': subfolder,
-                    'n': subfolder[len(path):].lstrip(os.sep) if subfolder.startswith(path) else os.path.basename(subfolder),
-                    's': self.folders[subfolder]['used_size']
-                })
+                if subfolder in self.folders:
+                    data[path]['subfolders'].append({
+                        'p': subfolder,
+                        'n': subfolder[len(path):].lstrip(os.sep) if subfolder.startswith(path) else os.path.basename(subfolder),
+                        's': self.folders[subfolder]['used_size']
+                    })
             for filename, size in self.folders[path]['files'].items():
                 data[path]['files'].append({
                     'p': os.path.join(path, filename),
@@ -228,7 +236,6 @@ class SizeFinder:
             data[path]['subfolders'] = compression.zstd.compress(pickle.dumps(data[path]['subfolders']))
             data[path]['files'] = compression.zstd.compress(pickle.dumps(data[path]['files']))
 
-        data['__root__'] = self.folders['__root__']['path']
         data['__date__'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         return data
 
@@ -271,6 +278,8 @@ class SizeFinder:
         for t in threads:
             t.join()
 
+        gc.enable()
+
         if not self.is_running:
             logging.info('Сканирование прервано')
             return False
@@ -287,10 +296,8 @@ class SizeFinder:
 
         data = self._form_final_data()
 
-        logging.info(f'Конечный данные сформированы. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
+        logging.info(f'Конечный данные сформированы. Получено {len(data)} папок. Данные о корне: {data["__root__"]} | {data[data["__root__"]]}')
         
-        gc.enable()
-
         self.database.create_db(data)
 
         logging.info(f'Сканирование {self.starting_point} завершено. Данные успешно сохранены')

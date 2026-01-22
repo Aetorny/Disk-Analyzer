@@ -24,7 +24,7 @@ class SettingsWindow(ctk.CTkToplevel):
         
         # Настройка окна
         self.title(_(title))
-        self.geometry("450x350") # Чуть увеличим высоту на случай множества опций
+        self.geometry("450x350")
         self.resizable(False, False)
         self.grab_set()
         
