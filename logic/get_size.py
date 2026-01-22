@@ -32,6 +32,7 @@ class SizeFinder:
         self.to_change: dict[str, str] = {}
         self.total = 0
         self.current = 0
+        self.current_task: Optional[str] = None
         self.is_running = False
         
         # Настройки многопоточности
@@ -259,6 +260,7 @@ class SizeFinder:
 
         self.total = total_usage
         self.current = 0
+        self.current_task = 'Scanning'
 
         gc.disable() # Отключаем GC для скорости при создании миллионов объектов
 
@@ -284,9 +286,13 @@ class SizeFinder:
             logging.info('Сканирование прервано')
             return False
 
+        self.current_task = 'Calculating sizes'
+
         logging.info(f'Сканирование {self.starting_point} завершено. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
         
         self._aggregate_sizes()
+
+        self.current_task = 'Formating data'
 
         logging.info(f'Размеры папок подсчитаны. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
 

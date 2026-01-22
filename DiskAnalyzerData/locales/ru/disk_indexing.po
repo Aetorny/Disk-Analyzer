@@ -97,3 +97,9 @@ msgstr "Обновить"
 
 msgid "Restart"
 msgstr "Перезапустить"
+
+msgid "Calculating sizes"
+msgstr "Просчитывание размеров"
+
+msgid "Formating data"
+msgstr "Форматирование данных"
