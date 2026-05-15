@@ -47,6 +47,7 @@ class DiskVisualizerApp(ctk.CTk):
         self.is_search_bar_active = False
         self.current_rendering: tuple[str, int, int] = ("", 0, 0)
         self.want_to_render: tuple[str, int, int] = ("", 0, 0)
+        self.first_display = True
 
         self.hit_map = []
         self.current_tk_image = None
@@ -330,6 +331,8 @@ class DiskVisualizerApp(ctk.CTk):
             time.sleep(0.1)
         self.search_data = None
         self._search_workers = 0
+        if self.search_entry:
+            self.search_loader.destroy()
         self.after(0, self.trigger_render)
 
     def _on_search_thread(self) -> None:
@@ -437,8 +440,6 @@ class DiskVisualizerApp(ctk.CTk):
         if not self.current_root: return
         w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
         if w == 1 and h == 1: return
-        if self.search_entry:
-            self.search_loader.stop()
         
         logging.info('Запуск пайплайна отрисовки')
         threading.Thread(target=self._render_pipeline, args=(w, h), daemon=True).start()
@@ -458,7 +459,8 @@ class DiskVisualizerApp(ctk.CTk):
             self._render_lock.release()
             return
         try:
-            if self.database.root_display_cache is not None and (self.current_root, width, height) in self.database.root_display_cache:
+            if self.first_display and self.database.root_display_cache is not None and (self.current_root, width, height) in self.database.root_display_cache:
+                self.first_display = False
                 image, hit_map = self.database.root_display_cache[(self.current_root, width, height)]
                 self.after(0, lambda: self._update_canvas(image, hit_map))
                 return
