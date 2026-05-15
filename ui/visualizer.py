@@ -508,17 +508,39 @@ class DiskVisualizerApp(ctk.CTk):
             # Тултип
             tooltip_str = f"[{type_label}] {name}\n{size_str} | {pct:.1f}%"
             offset_x, offset_y = 15, 15
-            
-            self.canvas.itemconfigure(self.tooltip_text, text=tooltip_str, state="normal")
-            self.canvas.coords(self.tooltip_text, mx + offset_x, my + offset_y) # type: ignore
-            
+            pad = 4
+
+            self.canvas.itemconfigure(
+                self.tooltip_text, text=tooltip_str, state="normal")
+
             bbox = self.canvas.bbox(self.tooltip_text)
             if bbox:
-                pad = 4
-                self.canvas.coords(self.tooltip_bg, bbox[0]-pad, bbox[1]-pad, bbox[2]+pad, bbox[3]+pad) # pyright: ignore[reportUnknownMemberType]
-                self.canvas.itemconfigure(self.tooltip_bg, state="normal")
-            
-            self.canvas.tag_raise(self.tooltip_bg) 
+                text_w = bbox[2] - bbox[0]
+                text_h = bbox[3] - bbox[1]
+
+                vis_right = self.canvas.canvasx(self.canvas.winfo_width()) # type: ignore
+                vis_bottom = self.canvas.canvasy(self.canvas.winfo_height()) # type: ignore
+
+                tx = mx + offset_x # pyright: ignore[reportUnknownVariableType]
+                ty = my + offset_y # pyright: ignore[reportUnknownVariableType]
+
+                # 4. Если тултип вылезает за правый край - показываем слева
+                if tx + text_w + pad > vis_right:
+                    tx = mx - text_w - pad # pyright: ignore[reportUnknownVariableType]
+
+                # 5. Если тултип вылезает за нижний край - показываем сверху
+                if ty + text_h + pad > vis_bottom:
+                    ty = my - text_h - pad # pyright: ignore[reportUnknownVariableType]
+
+                self.canvas.coords(self.tooltip_text, tx, ty) # type: ignore
+
+                bbox = self.canvas.bbox(self.tooltip_text)
+                if bbox:
+                    self.canvas.coords( # type: ignore
+                        self.tooltip_bg, bbox[0]-pad, bbox[1]-pad, bbox[2]+pad, bbox[3]+pad)
+                    self.canvas.itemconfigure(self.tooltip_bg, state="normal")
+
+            self.canvas.tag_raise(self.tooltip_bg)
             self.canvas.tag_raise(self.tooltip_text)
 
             # Статус бар снизу
