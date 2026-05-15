@@ -6,6 +6,7 @@ import os
 import math
 import logging
 import threading
+import subprocess
 import time
 from typing import Any
 
@@ -559,8 +560,13 @@ class DiskVisualizerApp(ctk.CTk):
         if self.selected_item and self.selected_item[4]:
             path = self.selected_item[4]
             if self.selected_item[7]:
-                path = os.path.dirname(path)
-            os.startfile(path)
+                subprocess.run([
+                    "explorer",
+                    "/select,",
+                    str(path)
+                ])
+            else:
+                os.startfile(path)
 
     def copy_path(self):
         if self.selected_item and self.selected_item[4]:
