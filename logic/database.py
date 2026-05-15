@@ -44,6 +44,7 @@ class Database:
 
         self.root_path: str | None = None
         self.last_scan_time: str | None = None
+        self.root_display_cache: dict[tuple[str, int, int], Any] | None = None
 
         self.stop_search_signal = False
 
@@ -123,6 +124,7 @@ class Database:
         self.node_count = meta['node_count']
         self.root_path = meta['root_path']
         self.last_scan_time = meta['last_scan_time']
+        self.root_display_cache = meta['root_display_cache']
         self._meta_loaded = True
 
     @lru_cache(maxsize=8192)
@@ -231,6 +233,17 @@ class Database:
 
         return np.frombuffer(blob, dtype=np.uint8), offsets
 
+    def save_metadata_to_disk(self):
+        meta = {
+            'node_count': self.node_count,
+            'root_path': self.root_path,
+            'last_scan_time': self.last_scan_time,
+            'root_display_cache': self.root_display_cache
+        }
+        with open(self.meta_path, 'wb') as f:
+            f.write(compression.zstd.compress(pickle.dumps(
+                meta, protocol=pickle.HIGHEST_PROTOCOL)))
+
     def save_to_disk(self):
         # 1. Компилируем строковые пулы
         names_blob, names_offsets = self._build_string_pool(self.unique_names)
@@ -259,13 +272,12 @@ class Database:
             paths=paths_arr
         )
 
-        # self._compress_npz()
-
         # 4. Сохраняем крошечные метаданные
         meta = {
             'node_count': self.node_count,
             'root_path': self.root_path,
-            'last_scan_time': self.last_scan_time
+            'last_scan_time': self.last_scan_time,
+            'root_display_cache': self.root_display_cache
         }
         with open(self.meta_path, 'wb') as f:
             f.write(compression.zstd.compress(pickle.dumps(meta, protocol=pickle.HIGHEST_PROTOCOL)))

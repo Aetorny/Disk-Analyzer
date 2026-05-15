@@ -45,7 +45,8 @@ class DiskVisualizerApp(ctk.CTk):
         self.scan_root_path: str = ""
         self.global_max_log = 1.0
         self.is_search_bar_active = False
-        self.current_rendering: str = ''
+        self.current_rendering: tuple[str, int, int] = ("", 0, 0)
+        self.want_to_render: tuple[str, int, int] = ("", 0, 0)
 
         self.hit_map = []
         self.current_tk_image = None
@@ -429,7 +430,7 @@ class DiskVisualizerApp(ctk.CTk):
 
     def on_resize(self, _event: Any):
         if self._resize_job: self.after_cancel(self._resize_job)
-        self._resize_job = self.after(100, self.trigger_render) # Чуть быстрее реакция
+        self._resize_job = self.after(10, self.trigger_render)
 
     def trigger_render(self):
         if not self.current_root: return
@@ -445,13 +446,21 @@ class DiskVisualizerApp(ctk.CTk):
         '''
         Пайплайн отрисовки
         '''
-        while self._render_lock.locked() and self.current_rendering != self.current_root:
-            time.sleep(0.1) 
+        self.want_to_render = (self.current_root, width, height)
+        while self._render_lock.locked() and self.current_rendering != (self.current_root, width, height):
+            time.sleep(0.05)
         if not self._render_lock.acquire(blocking=False):
             return
 
-        self.current_rendering = self.current_root
+        self.current_rendering = (self.current_root, width, height)
+        if self.current_rendering != self.want_to_render:
+            self._render_lock.release()
+            return
         try:
+            if self.database.root_display_cache is not None and (self.current_root, width, height) in self.database.root_display_cache:
+                image, hit_map = self.database.root_display_cache[(self.current_root, width, height)]
+                self.after(0, lambda: self._update_canvas(image, hit_map))
+                return
             image, hit_map = render_pipeline(
                 SETTINGS['visualize_type']['current'],
                 width, height,
@@ -463,6 +472,11 @@ class DiskVisualizerApp(ctk.CTk):
                 True if SETTINGS['color_map']['current'] == 'Nesting' else False,
                 self._data_lock
             )
+            if self.database.root_display_cache is None and self.current_root == self.database.root_path:
+                self.database.root_display_cache = {
+                    (self.current_root, width, height): (image, hit_map)
+                }
+                self.database.save_metadata_to_disk()
             self.after(0, lambda: self._update_canvas(image, hit_map))
         finally:
             self._render_lock.release()
