@@ -364,7 +364,8 @@ class DiskVisualizerApp(ctk.CTk):
 
     def refresh_file_list(self):
         '''Обновление списка файлов'''
-        paths = sorted([key for key, db in self.databases.items() if db.root_path is not None])
+        paths = sorted([key for key, db in self.databases.items()
+                       if not db.is_empty()])
         if paths:
             logging.info(f'Обнаружены пути: {paths}')
             self.combo_files.configure(values=paths) # pyright: ignore[reportUnknownMemberType]

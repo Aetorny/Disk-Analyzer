@@ -48,6 +48,12 @@ class Database:
 
         self.stop_search_signal = False
 
+    def is_empty(self) -> bool:
+        self._ensure_npz_loaded()
+        if self._npz_file is None:
+            return True
+        return False
+
     def _ensure_npz_loaded(self):
         """Ленивая подгрузка .npz архива при первом обращении к данным"""
         if self._npz_file is None and os.path.exists(self.data_path):
