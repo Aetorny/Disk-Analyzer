@@ -331,6 +331,8 @@ class DiskVisualizerApp(ctk.CTk):
         self.after(0, self.trigger_render)
 
     def _on_search_thread(self) -> None:
+        if self._search_workers > 1:
+            self.database.stop_search()
         if self._search_lock.locked():
             time.sleep(0.1)
         if self._search_workers > 1:
@@ -344,6 +346,8 @@ class DiskVisualizerApp(ctk.CTk):
         self.search_data = self.database.search_by_name(search_str)
         if self._search_workers == 1:
             self.after(0, self.trigger_render)
+        else:
+            self.search_data = None
         self._search_lock.release()
         self._search_workers -= 1
 
@@ -430,6 +434,8 @@ class DiskVisualizerApp(ctk.CTk):
         if not self.current_root: return
         w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
         if w == 1 and h == 1: return
+        if self.search_entry:
+            self.search_loader.stop()
         
         logging.info('Запуск пайплайна отрисовки')
         threading.Thread(target=self._render_pipeline, args=(w, h), daemon=True).start()

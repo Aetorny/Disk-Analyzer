@@ -45,10 +45,7 @@ class Database:
         self.root_path: str | None = None
         self.last_scan_time: str | None = None
 
-    def _compress_npz(self) -> None:
-        ...
-    def decompress_npz(self) -> None:
-        ...
+        self.stop_search_signal = False
 
     def _ensure_npz_loaded(self):
         """Ленивая подгрузка .npz архива при первом обращении к данным"""
@@ -296,7 +293,11 @@ class Database:
     def load_from_disk(cls, filepath: str) -> 'Database':
         return cls(filepath)
 
+    def stop_search(self) -> None:
+        self.stop_search_signal = True
+
     def search_by_name(self, search_str: str) -> set[int]:
+        self.stop_search_signal = False
         search_bytes = search_str.lower().encode('utf-8')
         blob = self.names_lower_blob
         offsets = self.names_lower_offsets
@@ -309,6 +310,8 @@ class Database:
         idx = 0
 
         while True:
+            if self.stop_search_signal:
+                return set()
             idx = blob_bytes.find(search_bytes, idx)
             if idx == -1:
                 break
@@ -316,7 +319,6 @@ class Database:
             string_idx = int(np.searchsorted(offsets, idx, side='right') - 1)
             matching_name_indices.add(string_idx)
             idx += 1
-            print(idx)
 
         if not matching_name_indices:
             return set()
