@@ -301,6 +301,7 @@ class DiskIndexingApp(ctk.CTk):
         Удаляет просканированную базу данных
         """
         db = self.databases[path]
+        db.close()
         delete_database(db.path)
         self.find_files -= 1
         self.update_visualize_button()

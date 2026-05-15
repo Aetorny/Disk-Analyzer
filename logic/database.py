@@ -53,6 +53,11 @@ class Database:
         if self._npz_file is None and os.path.exists(self.data_path):
             self._npz_file = np.load(self.data_path, mmap_mode='r')
 
+    def close(self):
+        if self._npz_file is not None:
+            self._npz_file.close()
+            self._npz_file = None
+
     @property
     def data(self) -> np.ndarray:
         self._ensure_npz_loaded()
