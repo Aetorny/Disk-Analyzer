@@ -14,7 +14,8 @@ def create_database(path: str) -> Database:
 
 
 def delete_database(path: str) -> None:
-    os.remove(path)
+    os.remove(path+'.npz')
+    os.remove(path+'.meta.pkl')
 
 
 def load_all_databases() -> dict[str, Database]:
