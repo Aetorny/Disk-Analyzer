@@ -6,8 +6,6 @@ import os
 import math
 import logging
 import threading
-import pickle
-import compression.zstd
 import time
 from typing import Any
 
@@ -38,14 +36,15 @@ class DiskVisualizerApp(ctk.CTk):
         # Создаем меню
         self.create_menu()
 
-        self.raw_data: Database
+        self.database: Database
         self.databases = databases
         self.icon_path = icon_path
-        self.search_data: set[str] = set()
+        self.search_data: None | set[int] = None
         self.current_root: str = ""
         self.scan_root_path: str = ""
         self.global_max_log = 1.0
         self.is_search_bar_active = False
+        self.current_rendering: str = ''
 
         self.hit_map = []
         self.current_tk_image = None
@@ -114,7 +113,6 @@ class DiskVisualizerApp(ctk.CTk):
         logging.info('UI успешно инициализирован')
 
         self.refresh_file_list()
-        self.after(1000, self.trigger_render)
 
     def toggle_search_bar(self, *_args: Any) -> None:
         self.is_search_bar_active = not self.is_search_bar_active
@@ -139,7 +137,7 @@ class DiskVisualizerApp(ctk.CTk):
             self.is_search_bar_active = False
             self.search_var = ctk.StringVar(value="")
             self.search_var.trace_add("write", self.on_search)
-        self.search_data = set()
+        self.search_data = None
         threading.Thread(target=self._cancel_search_thread, daemon=True).start()
 
     def create_menu(self):
@@ -328,7 +326,7 @@ class DiskVisualizerApp(ctk.CTk):
         self._search_workers += 100
         while self._search_lock.locked() and self._search_workers > 1:
             time.sleep(0.1)
-        self.search_data = set()
+        self.search_data = None
         self._search_workers = 0
         self.after(0, self.trigger_render)
 
@@ -340,41 +338,19 @@ class DiskVisualizerApp(ctk.CTk):
             return
         if not self._search_lock.acquire(blocking=False):
             return
-        self.search_data = set()
-        temp_data: set[str] = set()
+        self.search_data = None
         self.search_loader.start()
-        try:
-            search_str = self.search_var.get().strip().lower()
-            for path in self.raw_data:
-                if not path.startswith('__'):
-                    with self._data_lock:
-                        data = self.raw_data[path]
-                    for folder in pickle.loads(compression.zstd.decompress(data['subfolders'])):
-                        if self._search_workers > 1: return
-                        if search_str in folder['n'].lower():
-                            current = folder['p']
-                            while current != self.scan_root_path:
-                                temp_data.add(current)
-                                current = os.path.dirname(current)
-                    for file in pickle.loads(compression.zstd.decompress(data['files'])):
-                        if self._search_workers > 1: return
-                        if search_str in file['n'].lower():
-                            current = file['p']
-                            while current != self.scan_root_path:
-                                temp_data.add(current)
-                                current = os.path.dirname(current)
-            temp_data.add(self.scan_root_path)
-        finally:
-            if self._search_workers == 1:
-                self.search_data = temp_data
-                self.after(0, self.trigger_render)
-            self._search_lock.release()
-            self._search_workers -= 1
+        search_str = self.search_var.get().strip()
+        self.search_data = self.database.search_by_name(search_str)
+        if self._search_workers == 1:
+            self.after(0, self.trigger_render)
+        self._search_lock.release()
+        self._search_workers -= 1
 
     def on_search(self, *_args: Any) -> None:
         search_str = self.search_var.get().strip().lower()
         if search_str == '':
-            self.search_data = set()
+            self.search_data = None
             threading.Thread(target=self._cancel_search_thread, daemon=True).start()
             return
         self._search_workers += 1
@@ -382,7 +358,7 @@ class DiskVisualizerApp(ctk.CTk):
 
     def refresh_file_list(self):
         '''Обновление списка файлов'''
-        paths = sorted([key for key, db in self.databases.items() if not db.is_empty()])
+        paths = sorted([key for key, db in self.databases.items() if db.root_path is not None])
         if paths:
             logging.info(f'Обнаружены пути: {paths}')
             self.combo_files.configure(values=paths) # pyright: ignore[reportUnknownMemberType]
@@ -396,16 +372,16 @@ class DiskVisualizerApp(ctk.CTk):
             self.restart_app_label.place(relx=0.5, rely=0.5, anchor="center") # pyright: ignore[reportUnknownMemberType]
 
     def change_data(self, path: str) -> None:
-        self.raw_data = self.databases[path]
-        self.scan_root_path = self.raw_data['__root__']
-        if self.scan_root_path in self.raw_data:
-            size = self.raw_data[self.scan_root_path]['s']
-            self.global_max_log = math.log10(size)
+        self.database = self.databases[path]
+        assert self.database.root_path, "Root path is not set"
+        self.scan_root_path = self.database.root_path
+        size = self.database.get_root_size()
+        self.global_max_log = math.log10(size)
         self.change_directory(self.scan_root_path)
 
     def change_directory(self, path_str: str):
-        self.current_root = path_str
-        self.search_data = set()
+        self.current_root = path_str.strip(os.sep)
+        self.search_data = None
         self.trigger_render()
         self.on_search(None)
         self.update_breadcrumbs(path_str)
@@ -414,43 +390,36 @@ class DiskVisualizerApp(ctk.CTk):
     def check_up_button(self):
         if self.current_root == self.scan_root_path:
             self.btn_up.configure(state="disabled"); return # pyright: ignore[reportUnknownMemberType]
-        parent = os.path.dirname(self.current_root)
-        
-        while parent and len(parent) >= len(self.scan_root_path):
-            if parent in self.raw_data:
-                self.btn_up.configure(state="normal"); return # pyright: ignore[reportUnknownMemberType]
-            if parent == os.path.dirname(parent): break
-            parent = os.path.dirname(parent)
-        self.btn_up.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
+        if self.database.has_parent(self.current_root):
+            self.btn_up.configure(state="normal") # pyright: ignore[reportUnknownMemberType]
+            return
+        else:
+            self.btn_up.configure(state="disabled") # pyright: ignore[reportUnknownMemberType]
 
     def go_up_level(self):
-        parent = os.path.dirname(self.current_root)
-        while parent and len(parent) >= len(self.scan_root_path):
-            if parent in self.raw_data:
-                self.change_directory(parent)
-                return
-            if parent == os.path.dirname(parent): break
-            parent = os.path.dirname(parent)
+        parent_idx = self.database.get_parent_index(self.current_root)
+        if parent_idx != -1:
+            self.change_directory(self.database.get_full_path(parent_idx).strip(os.sep))
+            return
 
     def update_breadcrumbs(self, path_str: str):
         for widget in self.breadcrumb_frame.winfo_children(): # type: ignore
             widget.destroy() # pyright: ignore[reportUnknownMemberType]
 
-        clean_path = path_str.lstrip('\\'+os.sep)
+        clean_path = path_str.strip(os.sep)
         parts = clean_path.split(os.sep)
-
         accumulated_path = ''
         for i, part in enumerate(parts):
             accumulated_path = (part + os.sep if ":" in part else part) if i == 0 else os.path.join(accumulated_path, part)
-            is_valid, is_last = (accumulated_path in self.raw_data), (accumulated_path == self.current_root)
+            is_last = accumulated_path.strip(os.sep) == self.current_root
             btn = ctk.CTkButton(
                 self.breadcrumb_frame, text=part, fg_color="transparent",
-                hover_color="#555555", text_color="#FFFFFF" if is_last else ("#1E90FF" if is_valid else "#777777"),
-                state="normal" if (is_valid and not is_last) else "disabled", height=25, width=20,
+                hover_color="#555555", text_color="#FFFFFF" if is_last else "#1E90FF",
+                state="normal" if not is_last else "disabled", height=25, width=20,
                 command=lambda p=accumulated_path: self.change_directory(p)
             )
             btn.pack(side="left", padx=0) # pyright: ignore[reportUnknownMemberType]
-            if accumulated_path != self.current_root:
+            if accumulated_path.strip(os.sep) != self.current_root:
                 ctk.CTkLabel(self.breadcrumb_frame, text="›", width=12, text_color="#777777").pack(side="left") # pyright: ignore[reportUnknownMemberType]
 
     def on_resize(self, _event: Any):
@@ -460,23 +429,27 @@ class DiskVisualizerApp(ctk.CTk):
     def trigger_render(self):
         if not self.current_root: return
         w, h = self.canvas.winfo_width(), self.canvas.winfo_height()
+        if w == 1 and h == 1: return
         
         logging.info('Запуск пайплайна отрисовки')
         threading.Thread(target=self._render_pipeline, args=(w, h), daemon=True).start()
 
-    def _render_pipeline(self, width: int, height: int):
+    def _render_pipeline(self, width: int, height: int) -> None:
         '''
         Пайплайн отрисовки
         '''
+        while self._render_lock.locked() and self.current_rendering != self.current_root:
+            time.sleep(0.1) 
         if not self._render_lock.acquire(blocking=False):
             return
 
+        self.current_rendering = self.current_root
         try:
             image, hit_map = render_pipeline(
                 SETTINGS['visualize_type']['current'],
                 width, height,
                 self.current_root,
-                self.raw_data,
+                self.database,
                 color_cache,
                 self.global_max_log,
                 self.search_data,
@@ -512,9 +485,7 @@ class DiskVisualizerApp(ctk.CTk):
 
         if found:
             name, size_str = found[5], format_bytes(found[6])
-            with self._data_lock:
-                current_root_size = self.raw_data[self.current_root]['s'] or 1
-            pct = (found[6] / current_root_size * 100)
+            pct = (found[6] / self.database.get_root_size() * 100)
             is_file = found[7]
             type_label = _("File") if is_file else _("Folder")
             
@@ -562,7 +533,7 @@ class DiskVisualizerApp(ctk.CTk):
             item = self.hit_map[i]
             if item[0] <= mx <= item[2] and item[1] <= my <= item[3]:
                 path, is_file = item[4], item[7]
-                if not is_file and path in self.raw_data:
+                if not is_file:
                     self.change_directory(path)
                 return
 

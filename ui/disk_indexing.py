@@ -280,14 +280,14 @@ class DiskIndexingApp(ctk.CTk):
         Добавляет дату последнего сканирования
         Если её нет, то убирает кнопку удаления
         '''
-        date = self.databases[path_name].get('__date__')
+        date = self.databases[path_name].last_scan_time
         if date:
             date_label.configure(text=_("Last scan:") + f"{format_date_to_time_ago(date)}") # pyright: ignore[reportUnknownMemberType]
             self.find_files += 1
         else:
             date_label.destroy()
             delete_button.destroy()
-
+        
     def update_visualize_button(self) -> None:
         for t in self.db_check_threads:
             while t.is_alive():
@@ -301,9 +301,6 @@ class DiskIndexingApp(ctk.CTk):
         Удаляет просканированную базу данных
         """
         db = self.databases[path]
-        db_is_open = db.is_open
-        if db_is_open:
-            db.close()
         delete_database(db.path)
         self.find_files -= 1
         self.update_visualize_button()
@@ -312,8 +309,6 @@ class DiskIndexingApp(ctk.CTk):
             self.paths_frames[path][0].destroy()
             del self.paths_frames[path]
             return
-        if db_is_open:
-            db.open()
         self.paths_frames[path][1].destroy()
         self.paths_frames[path][2].destroy()
 

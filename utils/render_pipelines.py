@@ -2,10 +2,8 @@ import cairo
 from PIL import Image
 
 import time
-import pickle
 import logging
 import threading
-import compression.zstd
 from typing import Any
 
 import utils.squarify_local as squarify
@@ -23,7 +21,7 @@ def render_pipeline(
         database: Database,
         color_cache: ColorCache,
         global_max_log: float,
-        search_data: set[str],
+        search_data: None | set[int],
         is_level_color_map: bool,
         data_lock: threading.Lock
     ) -> tuple[Image.Image, list[tuple[float, float, float, float, str, str, float, bool]]]:
@@ -36,14 +34,15 @@ def render_pipeline(
             hit_map: list[tuple[float, float, float, float, str, str, float, bool]],
             path_str: str,
             size: float, x: float, y: float, dx: float, dy: float,
-            level: int) -> float:
+            level: int,
+            start_idx: int) -> float:
         """
         Итеративно считает координаты (через стек). Не рисует, а заполняет списки rects и texts.
         """
         start_time = time.perf_counter()
-        stack = [(path_str, path_str, size, x, y, dx, dy, level)]
+        stack = [(path_str, path_str, size, x, y, dx, dy, level, start_idx)]
         while stack:
-            path, name, size, x, y, dx, dy, level = stack.pop()
+            path, name, size, x, y, dx, dy, level, current_idx = stack.pop()
 
             if dx < CULLING_SIZE_PX or dy < CULLING_SIZE_PX:
                 continue
@@ -74,25 +73,23 @@ def render_pipeline(
             norm_w, norm_h = dx - 2*pad, dy - header_h - 2*pad
             if norm_w < 4 or norm_h < 4:
                 continue
-            
-            with data_lock:
-                data = database[path]
+            if current_idx == -1:
+                print(path, name, current_idx)
+            folder_content = database.get_folder_contents(current_idx, search_data, level <= 0 or search_data is not None)
+            subfolders = folder_content['folders']
+            files = folder_content['files']
+            if not subfolders and not files:
+                continue
 
-            subfolders = pickle.loads(compression.zstd.decompress(data['subfolders']))
-            if search_data:
-                subfolders = [x for x in subfolders if x['p'] in search_data]
-
-            files = []
             if level > 0 and not search_data:
-                sizes: list[float] = [x['s'] for x in subfolders]
+                sizes: list[float] = [subfolder['size'] for subfolder in subfolders]
             else:
-                files = pickle.loads(compression.zstd.decompress(data['files']))
-                if search_data:
-                    files = [x for x in files if x['p'] in search_data]
-                sizes: list[float] = [x['s'] for x in subfolders + files]
+                sizes: list[float] = [item['size'] for item in subfolders+files]
                 sizes.sort(reverse=True)
 
-            norm = squarify.normalize_sizes(sizes, norm_w, norm_h, sum(sizes)) # pyright: ignore[reportUnknownMemberType]
+            norm = squarify.normalize_sizes(
+                sizes, norm_w, norm_h, folder_content['total_files_size']+folder_content['total_folders_size']
+            )
             subfolders_norm, files_norm = norm[:len(subfolders)], norm[len(subfolders):]
             while 0.0 in subfolders_norm:
                 subfolders_norm.remove(0.0)
@@ -104,14 +101,15 @@ def render_pipeline(
 
             for rect, folder in zip(subfolders_rects, subfolders):
                 rx, ry, rdx, rdy = rect['x'], rect['y'], rect['dx'], rect['dy']
-
-                stack.append((
-                    folder['p'], 
-                    folder['n'],
-                    folder['s'], 
-                    rx, ry, rdx, rdy, 
-                    level + 1
-                ))
+                with data_lock:
+                    stack.append((
+                        folder['path'], 
+                        folder['name'],
+                        folder['size'],
+                        rx, ry, rdx, rdy, 
+                        level + 1,
+                        folder['index']
+                    ))
 
             if level > 0 and not search_data:
                 continue
@@ -123,7 +121,8 @@ def render_pipeline(
                     if is_level_color_map:
                         f_rgb = color_cache.get_rgb_by_number(level)
                     else:
-                        f_rgb = color_cache.get_color_rgb_and_text(file['s'], global_max_log)
+                        f_rgb = color_cache.get_color_rgb_and_text(
+                            file['size'], global_max_log)
                     r, g, b = f_rgb
                     brightness = (r * 299 + g * 587 + b * 114) / 1000
                     text_color = "black" if brightness > 128 else "white"
@@ -133,12 +132,13 @@ def render_pipeline(
                     
                     if rdx > 40 and rdy > 30:
                         max_chars = int(rdx / 10)
-                        name = file['n']
+                        name = file['name']
                         dname = name if len(name) <= max_chars else name[:max_chars] + "..."
 
                         texts.append((rx+4, ry+3, dname, text_color))
                     
-                    hit_map.append((rx, ry, rx+rdx, ry+rdy, file['p'], name, file['s'], True))
+                    with data_lock:
+                        hit_map.append((rx, ry, rx+rdx, ry+rdy, file['path'], name, file['size'], True))
         end_time = time.perf_counter()
         return end_time - start_time
 
@@ -148,17 +148,18 @@ def render_pipeline(
             hit_map: list[tuple[float, float, float, float, str, str, float, bool]],
             path_str: str,
             size: float, x: float, y: float, dx: float, dy: float,
-            level: int
+            level: int,
+            start_idx: int
         ) -> float:
         """
         Расчет координат.
         Структура: [ ПАПКИ (столбцы) | ФАЙЛЫ (строки) ]
         """
         start_time = time.perf_counter()
-        stack = [(path_str, path_str, size, x, y, dx, dy, level)]
+        stack = [(path_str, path_str, size, x, y, dx, dy, level, start_idx)]
 
         while stack:
-            curr_path, curr_name, curr_size, cx, cy, cdx, cdy, lvl = stack.pop()
+            curr_path, curr_name, curr_size, cx, cy, cdx, cdy, lvl, current_idx = stack.pop()
 
             if cdx < CULLING_SIZE_PX or cdy < CULLING_SIZE_PX:
                 continue
@@ -180,36 +181,28 @@ def render_pipeline(
                 disp_name = curr_name[:max_chars] + "..." if len(curr_name) > max_chars else curr_name
                 texts.append((cx + 4, cy + 3, disp_name, text_color))
 
-            with data_lock:
-                if curr_path not in database:
-                    hit_map.append((cx, cy, cx+cdx, cy+cdy, curr_path, curr_name, curr_size, True))
-                    continue
-                
-                node_data = database[curr_path]
-                hit_map.append((cx, cy, cx+cdx, cy+cdy, curr_path, curr_name, curr_size, False))
+            hit_map.append((cx, cy, cx+cdx, cy+cdy, curr_path, curr_name, curr_size, False))
 
             child_area_h = cdy - header_h
             if child_area_h < 2.0:
                 continue
 
-            subfolders = pickle.loads(compression.zstd.decompress(node_data['subfolders']))
-            files = pickle.loads(compression.zstd.decompress(node_data['files']))
-
-            if search_data:
-                subfolders = [x for x in subfolders if x['p'] in search_data]
-                files = [x for x in files if x['p'] in search_data]
+            folder_content = database.get_folder_contents(
+                current_idx, search_data, level <= 0 or search_data is not None)
+            subfolders = folder_content['folders']
+            files = folder_content['files']
 
             if not subfolders and not files:
                 continue
 
-            subfolders.sort(key=lambda x: x['s'], reverse=True) # pyright: ignore[reportUnknownLambdaType]
-            files.sort(key=lambda x: x['s'], reverse=True) # pyright: ignore[reportUnknownLambdaType]
+            subfolders.sort(key=lambda x: x['size'], reverse=True) # pyright: ignore[reportUnknownLambdaType]
+            files.sort(key=lambda x: x['size'], reverse=True) # pyright: ignore[reportUnknownLambdaType]
 
-            sum_folders = sum(f['s'] for f in subfolders)
-            sum_files = sum(f['s'] for f in files)
-            total_s = sum_folders + sum_files
+            sum_folders = folder_content['total_folders_size']
+            sum_files = folder_content['total_files_size']
+            total_size = sum_folders + sum_files
             
-            if total_s <= 0:
+            if total_size <= 0:
                 continue
 
             # Базовый отступ внутри папки
@@ -224,21 +217,21 @@ def render_pipeline(
                 continue
 
             for folder in subfolders:
-                ratio = folder['s'] / total_s
+                ratio = folder['size'] / total_size
                 folder_w = ratio * available_w
                 
                 if folder_w >= 1.0:
                     stack.append((
-                        folder['p'], folder['n'], folder['s'],
+                        folder['path'], folder['name'], folder['size'],
                         current_x, start_y, folder_w, available_h,
-                        lvl + 1
+                        lvl + 1, folder['index']
                     ))
                 current_x += folder_w
 
             if sum_files == 0:
                 continue
 
-            raw_files_width = (sum_files / total_s) * available_w
+            raw_files_width = (sum_files / total_size) * available_w
             
             extra_file_pad = 3.0
             
@@ -251,14 +244,14 @@ def render_pipeline(
                 file_y_cursor = start_y
                 
                 for file in files:
-                    file_h_ratio = file['s'] / sum_files
+                    file_h_ratio = file['size'] / sum_files
                     file_h = file_h_ratio * available_h
                     
                     if file_h >= 1.0:
                         if is_level_color_map:
                             f_rgb = color_cache.get_rgb_by_number(lvl)
                         else:
-                            f_rgb = color_cache.get_color_rgb_and_text(file['s'], global_max_log)
+                            f_rgb = color_cache.get_color_rgb_and_text(file['size'], global_max_log)
                         fr = f_rgb[0] * dark_factor
                         fg = f_rgb[1] * dark_factor
                         fb = f_rgb[2] * dark_factor
@@ -272,8 +265,7 @@ def render_pipeline(
                         hit_map.append((
                             file_draw_x, file_y_cursor, 
                             file_draw_x + file_draw_w, file_y_cursor + file_h, 
-                            file['p'], file['n'], file['s'], 
-                            True
+                            file['path'], file['name'], file['size'], True
                         ))
                         
                         if file_h > 14 and file_draw_w > 40:
@@ -281,7 +273,7 @@ def render_pipeline(
                             f_tcol = "black" if f_bright > 128 else "white"
                             
                             max_f_chars = int(file_draw_w / 9)
-                            f_disp_name = file['n']
+                            f_disp_name = file['name']
                             if len(f_disp_name) > max_f_chars:
                                 f_disp_name = f_disp_name[:max_f_chars] + "..."
                             
@@ -295,18 +287,18 @@ def render_pipeline(
     rects: list[tuple[int, int, int, int, int, int, int]] = []
     # Список (x, y, text, font, color, anchor)
     texts: list[tuple[float, float, str, str]] = []
-    # Список (x1, y1, x2, y2, name, size_str, size, is_file, is_group)
+    # Список (x1, y1, x2, y2, name, size_str, size, is_file)
     hit_map: list[tuple[float, float, float, float, str, str, float, bool]] = []
     logging.info(f'Начало расчета макета {pipeline}...')
-    with data_lock:
-        size = database[current_root]['s']
+    size = database.get_root_size()
     layout = _calculate_tree_map_layout
     if pipeline == 'Columns':
         layout = _calculate_columns_layout
     execution_time = layout(
         rects, texts, hit_map,
         current_root,
-        size, 0, 0, width, height, 0
+        size, 0, 0, width, height, 0,
+        database.get_index(current_root)
     )
     logging.info(f'Расчёт макета завершён. Получено {len(rects)=} | {len(texts)=} | {len(hit_map)=}')
     logging.info(f'Время расчёта макета: {execution_time} секунд')

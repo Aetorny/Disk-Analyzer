@@ -1,9 +1,7 @@
 import os
 import gc
-import pickle
 import logging
 import threading
-import compression.zstd
 from datetime import datetime
 from queue import Queue, ShutDown
 from typing import Optional, Any
@@ -29,7 +27,7 @@ class SizeFinder:
 
         # Основное хранилище данных
         self.folders: dict[str, dict[str, Any]] = {}
-        self.to_change: dict[str, str] = {}
+        self.total_elements = 0
         self.total = 0
         self.current = 0
         self.current_task: Optional[str] = None
@@ -44,7 +42,7 @@ class SizeFinder:
 
     def _normalize(self, path: str) -> str:
         """Приводит путь к стандартному виду для данной ОС."""
-        return os.path.normpath(path)
+        return os.path.normpath(path).strip(os.sep)
 
     def _is_directory_skip(self, entry: os.DirEntry[str]) -> bool:
         """
@@ -80,7 +78,7 @@ class SizeFinder:
         normalized_current_path = self._normalize(path)
 
         try:
-            with os.scandir(path) as it:
+            with os.scandir(path+os.sep) as it:
                 for entry in it:
                     if not self.is_running:
                         return
@@ -111,14 +109,12 @@ class SizeFinder:
 
         # Записываем результаты в общий словарь под блокировкой
         with self.data_lock:
-            if len(files) == 0 and len(subfolders) == 1:
-                self.to_change[normalized_current_path] = subfolders[0]
             self.folders[normalized_current_path] = {
-                "__files_size__": current_folder_files_size,
-                "used_size": current_folder_files_size,
                 "subfolders": subfolders,
-                "files": files
+                "files": files,
+                "name": os.path.basename(normalized_current_path) or normalized_current_path,
             }
+            self.total_elements += len(files) + 1
 
     def _worker(self) -> None:
         """Поток-обработчик."""
@@ -137,108 +133,23 @@ class SizeFinder:
             self._process_directory(path)
             self.queue.task_done()
 
-    def _aggregate_sizes(self) -> None:
-        """
-        Считает полные размеры папок снизу вверх.
-        """
-        # Сортируем пути по длине строки (от длинных к коротким).
-        # Это позволяет гарантированно обработать детей до их родителей.
-        sorted_paths = sorted(
-            self.folders.keys(), 
-            key=len, 
-            reverse=True
-        )
-
-        for path in sorted_paths:
-            if path != '__root__':
-                folder_data = self.folders[path]
-                
-                total_size = folder_data["__files_size__"]
-                
-                for subpath in folder_data["subfolders"]:
-                    if subpath in self.folders:
-                        total_size += self.folders[subpath]["used_size"]
-
-                folder_data["used_size"] = total_size
-                
-                # Удаляем временное поле, чтобы не засорять JSON
-                del folder_data["__files_size__"]
-
-    def _collapse_folders(self) -> None:
+    def _form_final_data(self) -> None:
         '''
-        Объединяет папки, которые содержат только 1 подпапку
-        И удаляет из данных пустые папки (папки, весящие 0 байт)
+        Преобразует полученные данные в используемую базу данных
         '''
-        to_change = set(self.to_change.keys())
-        to_remove: set[str] = set()
-        
-        # Определяем какие папки нужно удалить
-        # Изменяем необходимые папки из self.to_change
-        for path in self.folders:
-            if path != '__root__':
-                if self.folders[path]["used_size"] == 0:
-                    to_remove.add(path)
-                i = 0
-                while i < len(self.folders[path]["subfolders"]):
-                    subfolder = self.folders[path]["subfolders"][i]
-                    if subfolder in to_change:
-                        self.folders[path]["subfolders"].remove(subfolder)
-                        self.folders[path]["subfolders"].append(self.to_change[subfolder])
-                    else:
-                        i += 1
-
-        # Удаляем папки весящие 0 байт и объединённые папки
-        for path in to_change | to_remove:
-            if path in self.folders:
-                del self.folders[path]
-
-        # Убираем из списков подпапок все удалённые папки
-        for path in self.folders:
-            if path != '__root__':
-                i = 0
-                while i < len(self.folders[path]["subfolders"]):
-                    subfolder = self.folders[path]["subfolders"][i]
-                    if subfolder in to_remove:
-                        self.folders[path]["subfolders"].remove(subfolder)
-                    else:
-                        i += 1
-
-    def _form_final_data(self) -> dict[str, Any]:
-        '''
-        Предобрабатывает данные в формат, который использует визуализатор
-        '''
-        data: dict[str, Any] = {}
-        data['__root__'] = self.folders['__root__']['path']
+        root: str = self.folders['__root__']['path']
         del self.folders['__root__']
-
-        for path in self.folders.keys():
-            path = self._normalize(path)
-            data[path] = {
-                'subfolders': [],
-                'files': [],
-                's': self.folders[path]['used_size']
-            }
-            for subfolder in self.folders[path]['subfolders']:
-                if subfolder in self.folders:
-                    data[path]['subfolders'].append({
-                        'p': subfolder,
-                        'n': subfolder[len(path):].lstrip(os.sep) if subfolder.startswith(path) else os.path.basename(subfolder),
-                        's': self.folders[subfolder]['used_size']
-                    })
-            for filename, size in self.folders[path]['files'].items():
-                data[path]['files'].append({
-                    'p': os.path.join(path, filename),
-                    'n': filename,
-                    's': size
-                })
-            data[path]['subfolders'].sort(key=lambda x: x['s'], reverse=True) # type: ignore
-            data[path]['files'].sort(key=lambda x: x['s'], reverse=True) # type: ignore
-
-            data[path]['subfolders'] = compression.zstd.compress(pickle.dumps(data[path]['subfolders']))
-            data[path]['files'] = compression.zstd.compress(pickle.dumps(data[path]['files']))
-
-        data['__date__'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return data
+        self.database.build_from_dict(
+            self.folders,
+            root,
+            self.total_elements
+        )
+        self.database.save_metadata(
+            root,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+        self.folders.clear()
+        del self.folders
 
     def run(self) -> bool:
         self.is_running = True
@@ -286,26 +197,16 @@ class SizeFinder:
             logging.info('Сканирование прервано')
             return False
 
-        self.current_task = 'Calculating sizes'
-
         logging.info(f'Сканирование {self.starting_point} завершено. Получено {len(self.folders)-1} папок. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
-        
-        self._aggregate_sizes()
 
         self.current_task = 'Formating data'
 
-        logging.info(f'Размеры папок подсчитаны. Данные о корне: {self.folders["__root__"]} | {self.folders[self.folders["__root__"]['path']]}')
+        self._form_final_data()
 
-        self._collapse_folders()
-
-        logging.info(f'Коллапс папок завершён. Получено {len(self.folders)-1} папок')
-
-        data = self._form_final_data()
-
-        logging.info(f'Конечный данные сформированы. Получено {len(data)} папок. Данные о корне: {data["__root__"]} | {data[data["__root__"]]}')
-        
-        self.database.create_db(data)
+        self.database.save_to_disk()
 
         logging.info(f'Сканирование {self.starting_point} завершено. Данные успешно сохранены')
+
+        gc.collect()
         
         return True

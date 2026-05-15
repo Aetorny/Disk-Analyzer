@@ -30,9 +30,6 @@ def main() -> None:
         while True:
             set_default_values()
 
-            for db in databases.values():
-                db.open()
-
             indexing_app = DiskIndexingApp(databases, icon_path)
             indexing_app.iconbitmap(icon_path) # pyright: ignore[reportUnknownMemberType]
             indexing_app.mainloop() # pyright: ignore[reportUnknownMemberType]
@@ -48,8 +45,6 @@ def main() -> None:
                 break
     finally:
         logging.info(f'Закрытие {len(databases)} баз данных')
-        for db in databases.values():
-            db.close()
 
     logging.info('Программа завершена')
 

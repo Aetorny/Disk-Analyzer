@@ -20,22 +20,19 @@ def delete_database(path: str) -> None:
 def load_all_databases() -> dict[str, Database]:
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
-    dbs = glob.glob(os.path.join(DATA_DIR, '*.db'))
+    dbs = glob.glob(os.path.join(DATA_DIR, '*.db.*'))
     databases: dict[str, Database] = {}
     for path in dbs:
-        db = Database(path)
+        db = Database.load_from_disk(path[:path.rfind('.db')+3])
+        db.ensure_meta_loaded()
         try:
-            db.open()
-            root = db.get('__root__')
+            root = db.root_path
             assert isinstance(root, str)
             databases[root] = db
         except Exception as e:
             logging.error(f'Ошибка при загрузке базы данных {path}: {e}', exc_info=True)
-            db.close()
             delete_database(path)
             logging.info(f'База данных {path} была удалена.')
-        finally:
-            db.close()
             
     disks = get_start_directories()
     for disk in disks:
