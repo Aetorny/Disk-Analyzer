@@ -376,11 +376,11 @@ class DiskIndexingApp(ctk.CTk):
                 if total > 0:
                     progress = current / total
                     self.progress_bar.set(progress) # pyright: ignore[reportUnknownMemberType]
-                    self.status_label.configure(text=_("Processed:") + f"{format_bytes(current)} / {format_bytes(total)} ({int(progress*100)}%)") # pyright: ignore[reportUnknownMemberType]
+                    self.status_label.configure(text=_("Processed:") + f"{format_bytes(current)} / {format_bytes(total)} ({int(progress*100)}%)", font=("Arial", 14, "bold")) # pyright: ignore[reportUnknownMemberType]
                 else:
                     # Если total еще не подсчитан или равен 0
                     self.progress_bar.set(0) # pyright: ignore[reportUnknownMemberType]
-                    self.status_label.configure(text=_("Counting files...") + f"{format_bytes(current)}") # pyright: ignore[reportUnknownMemberType]
+                    self.status_label.configure(text=_("Counting files...") + f"{format_bytes(current)}", font=("Arial", 16, "bold")) # pyright: ignore[reportUnknownMemberType]
             elif self.current_size_finder.current_task is not None:
                 self.status_label.configure(text=_(self.current_size_finder.current_task), font=("Arial", 16, "bold")) # pyright: ignore[reportUnknownMemberType]
                 self.progress_bar.configure(mode="indeterminate") # pyright: ignore[reportUnknownMemberType]
